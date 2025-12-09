@@ -1,0 +1,22 @@
+{
+  "name": "skills-template",
+  "owner": {
+    "name": "ultimatile",
+    "email": "ultimatile@users.noreply.github.com"
+  },
+  "metadata": {
+    "description": "Template repository for creating custom Claude skills",
+    "version": "0.0.1"
+  },
+  "plugins": [
+    {
+      "name": "custom-skills",
+      "description": "Your custom Claude skills collection",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/your-skill-name"
+      ]
+    }
+  ]
+}
