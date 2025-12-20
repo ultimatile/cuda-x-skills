@@ -4,6 +4,7 @@
 #     "requests",
 #     "beautifulsoup4",
 #     "rapidfuzz",
+#     "sphobjinv",
 # ]
 # ///
 
@@ -15,8 +16,11 @@ import argparse
 from urllib.parse import urljoin
 from rapidfuzz import process, fuzz
 
+import sphobjinv as soi
+
 BASE_URL = "https://docs.nvidia.com/cuda/cuda-runtime-api/"
 MODULES_URL = urljoin(BASE_URL, "modules.html")
+CCCL_INV_URL = "https://nvidia.github.io/cccl/libcudacxx/objects.inv"
 
 def fetch_soup(url, description=""):
     try:
@@ -26,6 +30,26 @@ def fetch_soup(url, description=""):
     except Exception as e:
         print(f"Error fetching {url}: {e}", file=sys.stderr)
         return None
+
+def get_cccl_groups(inv_url=CCCL_INV_URL):
+    try:
+        inv = soi.Inventory(url=inv_url)
+        groups = []
+        for obj in inv.objects:
+            # Filter for C++ functions/classes/etc useful for mining
+            # obj.domain='cpp', obj.role='function' or 'class' might be best
+            # For broad mapping, let's take mostcpp items
+            if obj.domain == 'cpp':
+                groups.append({
+                    "group": obj.name, # Function/Class name
+                    "url": urljoin(inv_url, obj.uri),
+                    "role": obj.role,
+                    "source": "cccl"
+                })
+        return groups
+    except Exception as e:
+        print(f"Error fetching/parsing Sphinx inventory: {e}", file=sys.stderr)
+        return []
 
 def get_all_groups(modules_url):
     soup = fetch_soup(modules_url, "Modules Index")
@@ -42,7 +66,8 @@ def get_all_groups(modules_url):
             
             groups.append({
                 "group": group_name,
-                "url": page_url
+                "url": page_url,
+                "source": "cuda_runtime"
             })
     return groups
 
@@ -92,11 +117,15 @@ def main():
     parser.add_argument("--list", action="store_true", help="Output in line-oriented format (name\\turl) for fzf")
     parser.add_argument("--fuzzy", action="store_true", help="Use fuzzy matching (requires rapidfuzz)")
     parser.add_argument("--threshold", type=float, default=60.0, help="Fuzzy match threshold (0-100)")
+    parser.add_argument("--source", choices=["cuda_runtime", "cccl"], default="cuda_runtime", help="Documentation source")
     
     args = parser.parse_args()
     
     # 1. Gather all candidates
-    all_groups = get_all_groups(MODULES_URL)
+    if args.source == "cccl":
+        all_groups = get_cccl_groups(CCCL_INV_URL)
+    else:
+        all_groups = get_all_groups(MODULES_URL)
     
     # 2. Apply filter
     if args.keywords:
@@ -110,6 +139,7 @@ def main():
             print(f"{c['group']}\t{c['url']}")
     else:
         output = {
+            "source": args.source,
             "total_found": len(all_groups),
             "filtered_count": len(candidates),
             "candidates": candidates
