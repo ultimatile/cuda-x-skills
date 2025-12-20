@@ -24,7 +24,7 @@ CCCL_INV_URL = "https://nvidia.github.io/cccl/libcudacxx/objects.inv"
 
 def fetch_soup(url, description=""):
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)
         response.raise_for_status()
         return BeautifulSoup(response.content, 'html.parser')
     except Exception as e:
@@ -40,9 +40,16 @@ def get_cccl_groups(inv_url=CCCL_INV_URL):
             # obj.domain='cpp', obj.role='function' or 'class' might be best
             # For broad mapping, let's take mostcpp items
             if obj.domain == 'cpp':
+                # Sphinx inventory uses $ as placeholder for name
+                raw_uri = obj.uri
+                if "$" in raw_uri:
+                    final_url = urljoin(inv_url, raw_uri.replace("$", obj.name))
+                else:
+                    final_url = urljoin(inv_url, raw_uri)
+
                 groups.append({
                     "group": obj.name, # Function/Class name
-                    "url": urljoin(inv_url, obj.uri),
+                    "url": final_url,
                     "role": obj.role,
                     "source": "cccl"
                 })
@@ -57,11 +64,17 @@ def get_all_groups(modules_url):
         return []
 
     groups = []
+    seen_urls = set()
     for a in soup.find_all('a', href=True):
         href = a['href']
         if "group__" in href and "modules" not in href:
             full_url = urljoin(modules_url, href)
             page_url = full_url.split('#')[0]
+            
+            if page_url in seen_urls:
+                continue
+            seen_urls.add(page_url)
+
             group_name = a.get_text(strip=True)
             
             groups.append({
@@ -80,34 +93,39 @@ def filter_groups(groups, keywords, use_fuzzy=False, threshold=60.0):
     # Pre-process group names for fuzzy matching
     group_names = [g['group'] for g in groups]
     
+    # Track best matches by group to avoid duplicates but keep highest score
+    best_matches = {}
+
     for kw in keywords:
         if use_fuzzy:
             # Use RapidFuzz to find matches
-            # process.extract returns list of (match, score, index)
             results = process.extract(kw, group_names, scorer=fuzz.partial_ratio, limit=None)
             
             for match, score, index in results:
                 if score >= threshold:
-                    # Avoid duplicates if multiple keywords match same group
                     item = groups[index]
-                    if item not in filtered:
-                        # Add score for debugging/ranking
+                    key = item['url'] # Use URL as unique identifier
+                    
+                    if key not in best_matches or score > best_matches[key]['score']:
+                        # Update if this is a better match
                         item_copy = item.copy()
                         item_copy['score'] = score
                         item_copy['matched_keyword'] = kw
-                        filtered.append(item_copy)
-        else:
-            # Simple substring match
-            kw_lower = kw.lower()
-            for g in groups:
-                 if kw_lower in g['group'].lower():
-                     if g not in filtered:
-                         filtered.append(g)
-            
-    # If fuzzy, sort by score descending
+                        best_matches[key] = item_copy
+    
     if use_fuzzy:
+        filtered = list(best_matches.values())
         filtered.sort(key=lambda x: x.get('score', 0), reverse=True)
-        
+        return filtered
+
+    # Non-fuzzy fallback
+    for kw in keywords:
+        kw_lower = kw.lower()
+        for g in groups:
+            if kw_lower in g['group'].lower():
+                if g not in filtered:
+                    filtered.append(g)
+                     
     return filtered
 
 def main():

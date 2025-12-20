@@ -19,7 +19,7 @@ def fetch_content(source):
             return f.read()
     else:
         try:
-            response = requests.get(source)
+            response = requests.get(source, timeout=10)
             response.raise_for_status()
             return response.content
         except Exception as e:
@@ -34,43 +34,55 @@ def extract_sphinx_items(soup):
     
     definitions = soup.find_all("dl")
     for dl in definitions:
-        try:
-            dt = dl.find("dt")
-            if not dt or "sig-object" not in dt.get("class", []):
+        # Sphinx puts multiple <dt> items before a <dd> if there are overloads
+        # Or sometimes interleaved. We need to handle dt/dd pairing carefully.
+        # But commonly in standard docs: dt, dt, dd
+        
+        # Collect all signatures in this dl block
+        current_description = ""
+        dd = dl.find("dd")
+        if dd:
+            current_description = dd.get_text(" ", strip=True)
+            current_description = current_description[:300] + "..." if len(current_description) > 300 else current_description
+
+        dts = dl.find_all("dt")
+        for dt in dts:
+            try:
+                if "sig-object" not in dt.get("class", []):
+                     # Newer sphinx might strictly use sig-object, or check parent class
+                     # For now, if it's in a dl.cpp/function block, assume it's relevant
+                     # But check if it really looks like a signature
+                     if not dt.get("id"):
+                         continue
+
+                # Signature extraction
+                # Remove headerlink if present - duplicate soup to not destroy original if shared?
+                # Actually soup modification is fine here
+                for a in dt.find_all("a", class_="headerlink"):
+                    a.decompose()
+                signature = dt.get_text(" ", strip=True)
+                
+                # Name extraction (best effort from signature or id)
+                name = "Unknown"
+                if dt.get("id"):
+                    name = dt.get("id")
+                else:
+                    # Try to find the bold descname
+                    descname = dt.find(class_="descname")
+                    if descname:
+                        name = descname.get_text(strip=True)
+                
+                api_items.append({
+                    "api_type": "function", 
+                    "name": name,
+                    "signature": signature,
+                    "description": current_description,
+                    "parameters": []
+                })
+                
+            except Exception as e:
+                print(f"Error parsing Sphinx item: {e}", file=sys.stderr)
                 continue
-                
-            # Signature extraction
-            # Remove headerlink if present
-            for a in dt.find_all("a", class_="headerlink"):
-                a.decompose()
-            signature = dt.get_text(" ", strip=True)
-            
-            # Name extraction (best effort from signature or id)
-            name = "Unknown"
-            if dt.get("id"):
-                name = dt.get("id")
-            else:
-                # Try to find the bold descname
-                descname = dt.find(class_="descname")
-                if descname:
-                    name = descname.get_text(strip=True)
-            
-            # Description extraction
-            dd = dl.find("dd")
-            description = ""
-            if dd:
-                description = dd.get_text(" ", strip=True)
-                
-            api_items.append({
-                "api_type": "function", # Simplified
-                "name": name,
-                "signature": signature,
-                "description": description[:300] + "..." if len(description) > 300 else description,
-                "parameters": [] # Parsing params from Sphinx is harder, omitted for now
-            })
-            
-        except Exception as e:
-            continue
             
     return api_items
 
@@ -123,6 +135,7 @@ def extract_api_items(soup):
                 })
                 
             except Exception as e:
+                print(f"Error parsing Doxygen item: {e}", file=sys.stderr)
                 # Skip malformed items but continue processing
                 continue
                 
