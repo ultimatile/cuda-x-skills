@@ -90,53 +90,92 @@ def extract_api_items(soup):
     # Detect doc type
     if soup.find("dl", class_="cpp"):
         return extract_sphinx_items(soup)
-    elif soup.find(class_="memitem"):
-        # Existing Doxygen logic
+    elif soup.find(class_="memitem") or soup.find("dt", class_="description"):
+        # Existing Doxygen logic (Standard & New NVIDIA format)
         api_items = []
-        # NVIDIA docs often wrap API items in .memitem
-        mem_items = soup.find_all(class_="memitem")
         
-        for item in mem_items:
+        # Strategy 1: Look for .memitem (Older Doxygen)
+        mem_items = soup.find_all(class_="memitem")
+        if mem_items:
+            for item in mem_items:
+                try:
+                    memproto = item.find(class_="memproto")
+                    if not memproto: continue
+                    memname = item.find(class_="memname")
+                    name = memname.get_text(strip=True) if memname else "Unknown"
+                    signature = memproto.get_text(" ", strip=True)
+                    memdoc = item.find(class_="memdoc")
+                    description = memdoc.get_text(" ", strip=True) if memdoc else ""
+                    params = []
+                    if memdoc:
+                        param_table = memdoc.find(class_="params")
+                        if param_table:
+                            rows = param_table.find_all("tr")
+                            for row in rows:
+                                cols = row.find_all("td")
+                                if len(cols) >= 2:
+                                    p_name = cols[0].get_text(strip=True)
+                                    p_desc = cols[1].get_text(" ", strip=True)
+                                    params.append({"name": p_name, "description": p_desc})
+                    api_items.append({
+                        "api_type": "function",
+                        "name": name,
+                        "signature": signature,
+                        "description": description[:300] + "..." if len(description) > 300 else description,
+                        "parameters": params
+                    })
+                except Exception: continue
+        
+        # Strategy 2: Look for dt.description/dd.description (Newer NVIDIA format)
+        # Note: These are often pairs.
+        dt_items = soup.find_all("dt", class_="description")
+        for dt in dt_items:
             try:
-                # Extract Name and Signature
-                memproto = item.find(class_="memproto")
-                if not memproto:
+                # Name can be found in a child span with class 'member_name'
+                # or just 'apiItemName' inside?
+                # From log: <span class="member_name"><a ...>cudaArrayGetInfo</a>...</span>
+                name_span = dt.find(class_="member_name")
+                name = name_span.get_text(strip=True) if name_span else "Unknown"
+                
+                # Signature is the whole dt text (clean up newlines)
+                # Remove anchor links from signature extraction if needed ??
+                signature = dt.get_text(" ", strip=True)
+                
+                # Find corresponding dd
+                dd = dt.find_next_sibling("dd", class_="description")
+                if not dd:
                     continue
-                    
-                memname = item.find(class_="memname")
-                name = memname.get_text(strip=True) if memname else "Unknown"
                 
-                # Signature extraction
-                signature = memproto.get_text(" ", strip=True)
+                # Description: direct text of dd or div.section inside
+                # From log: <div class="section">Gets...</div>
+                desc_div = dd.find("div", class_="section")
+                if desc_div:
+                    description = desc_div.get_text(" ", strip=True)
+                else:
+                    description = dd.get_text(" ", strip=True)
                 
-                # Extract Description
-                memdoc = item.find(class_="memdoc")
-                description = memdoc.get_text(" ", strip=True) if memdoc else ""
-                
-                # Extract Parameters
+                # Parameters: dl.table-display-params
                 params = []
-                if memdoc:
-                    param_table = memdoc.find(class_="params")
-                    if param_table:
-                        rows = param_table.find_all("tr")
-                        for row in rows:
-                            cols = row.find_all("td")
-                            if len(cols) >= 2:
-                                param_name = cols[0].get_text(strip=True)
-                                param_desc = cols[1].get_text(" ", strip=True)
-                                params.append({"name": param_name, "description": param_desc})
+                param_dl = dd.find("dl", class_="table-display-params")
+                if param_dl:
+                     # pairs of dt (name) dd (desc)
+                     p_dts = param_dl.find_all("dt")
+                     for p_dt in p_dts:
+                         p_dd = p_dt.find_next_sibling("dd")
+                         p_name = p_dt.get_text(strip=True)
+                         p_desc = p_dd.get_text(" ", strip=True) if p_dd else ""
+                         params.append({"name": p_name, "description": p_desc})
 
                 api_items.append({
-                    "api_type": "function", # Could be detected dynamically
+                    "api_type": "function",
                     "name": name,
                     "signature": signature,
                     "description": description[:300] + "..." if len(description) > 300 else description,
                     "parameters": params
                 })
-                
+
             except Exception as e:
-                print(f"Error parsing Doxygen item: {e}", file=sys.stderr)
-                # Skip malformed items but continue processing
+                print(f"Error parsing NVIDIA item: {e}", file=sys.stderr)
                 continue
                 
         return api_items

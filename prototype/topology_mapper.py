@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 import json
 import sys
 import argparse
+import os
 from urllib.parse import urljoin
 from rapidfuzz import process, fuzz
 
@@ -21,6 +22,60 @@ import sphobjinv as soi
 BASE_URL = "https://docs.nvidia.com/cuda/cuda-runtime-api/"
 MODULES_URL = urljoin(BASE_URL, "modules.html")
 CCCL_INV_URL = "https://nvidia.github.io/cccl/libcudacxx/objects.inv"
+CCCL_INV_CANDIDATES = [
+    CCCL_INV_URL,
+    "https://nvidia.github.io/cccl/objects.inv",
+    "https://nvidia.github.io/libcudacxx/objects.inv",
+    "https://nvidia.github.io/libcudacxx/latest/objects.inv",
+    "https://nvidia.github.io/cccl/libcudacxx/latest/objects.inv",
+    "https://docs.nvidia.com/cccl/libcudacxx/objects.inv",
+    "https://docs.nvidia.com/cccl/objects.inv",
+]
+CCCL_BASE_URLS = [
+    "https://nvidia.github.io/cccl/libcudacxx/",
+    "https://nvidia.github.io/cccl/",
+    "https://nvidia.github.io/libcudacxx/",
+    "https://docs.nvidia.com/cccl/libcudacxx/",
+    "https://docs.nvidia.com/cccl/",
+]
+
+def probe_inventory_url(url, timeout=10):
+    try:
+        response = requests.get(url, timeout=timeout)
+        response.raise_for_status()
+        return response.url
+    except Exception:
+        return None
+
+def resolve_cccl_inventory_url(inv_url=None):
+    if inv_url:
+        resolved = probe_inventory_url(inv_url)
+        if resolved:
+            return resolved
+
+    env_url = os.getenv("CCCL_INV_URL")
+    if env_url:
+        resolved = probe_inventory_url(env_url)
+        if resolved:
+            return resolved
+
+    for url in CCCL_INV_CANDIDATES:
+        resolved = probe_inventory_url(url)
+        if resolved:
+            return resolved
+
+    for base_url in CCCL_BASE_URLS:
+        try:
+            response = requests.get(base_url, timeout=10)
+            response.raise_for_status()
+            base = urljoin(response.url, "./")
+            candidate = urljoin(base, "objects.inv")
+            resolved = probe_inventory_url(candidate)
+            if resolved:
+                return resolved
+        except Exception:
+            continue
+    return None
 
 def fetch_soup(url, description=""):
     try:
@@ -33,7 +88,17 @@ def fetch_soup(url, description=""):
 
 def get_cccl_groups(inv_url=CCCL_INV_URL):
     try:
-        inv = soi.Inventory(url=inv_url)
+        resolved_url = resolve_cccl_inventory_url(inv_url)
+        if not resolved_url:
+            print("Error fetching/parsing Sphinx inventory: no valid objects.inv found", file=sys.stderr)
+            return []
+        # Fetch manually to enforce timeout
+        response = requests.get(resolved_url, timeout=10)
+        response.raise_for_status()
+        
+        # Load inventory from downloaded bytes
+        inv = soi.Inventory(data=response.content)
+        
         groups = []
         for obj in inv.objects:
             # Filter for C++ functions/classes/etc useful for mining
@@ -43,9 +108,9 @@ def get_cccl_groups(inv_url=CCCL_INV_URL):
                 # Sphinx inventory uses $ as placeholder for name
                 raw_uri = obj.uri
                 if "$" in raw_uri:
-                    final_url = urljoin(inv_url, raw_uri.replace("$", obj.name))
+                    final_url = urljoin(response.url, raw_uri.replace("$", obj.name))
                 else:
-                    final_url = urljoin(inv_url, raw_uri)
+                    final_url = urljoin(response.url, raw_uri)
 
                 groups.append({
                     "group": obj.name, # Function/Class name
