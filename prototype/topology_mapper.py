@@ -92,12 +92,8 @@ def get_cccl_groups(inv_url=CCCL_INV_URL):
         if not resolved_url:
             print("Error fetching/parsing Sphinx inventory: no valid objects.inv found", file=sys.stderr)
             return []
-        # Fetch manually to enforce timeout
-        response = requests.get(resolved_url, timeout=10)
-        response.raise_for_status()
-        
-        # Load inventory from downloaded bytes
-        inv = soi.Inventory(data=response.content)
+        # Let sphobjinv handle fetching/parsing to avoid API incompatibilities
+        inv = soi.Inventory(url=resolved_url)
         
         groups = []
         for obj in inv.objects:
@@ -108,9 +104,9 @@ def get_cccl_groups(inv_url=CCCL_INV_URL):
                 # Sphinx inventory uses $ as placeholder for name
                 raw_uri = obj.uri
                 if "$" in raw_uri:
-                    final_url = urljoin(response.url, raw_uri.replace("$", obj.name))
+                    final_url = urljoin(resolved_url, raw_uri.replace("$", obj.name))
                 else:
-                    final_url = urljoin(response.url, raw_uri)
+                    final_url = urljoin(resolved_url, raw_uri)
 
                 groups.append({
                     "group": obj.name, # Function/Class name
