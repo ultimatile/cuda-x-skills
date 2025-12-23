@@ -1,0 +1,29 @@
+[[library]]
+name = "cccl"
+description = "CCCL libcudacxx"
+doc_type = "sphinx"
+inventory_urls = [
+  "https://nvidia.github.io/cccl/libcudacxx/objects.inv",
+  "https://nvidia.github.io/cccl/objects.inv",
+  "https://nvidia.github.io/libcudacxx/objects.inv",
+  "https://nvidia.github.io/libcudacxx/latest/objects.inv",
+  "https://nvidia.github.io/cccl/libcudacxx/latest/objects.inv",
+  "https://docs.nvidia.com/cccl/libcudacxx/objects.inv",
+  "https://docs.nvidia.com/cccl/objects.inv"
+]
+base_urls = [
+  "https://nvidia.github.io/cccl/libcudacxx/",
+  "https://nvidia.github.io/cccl/",
+  "https://nvidia.github.io/libcudacxx/",
+  "https://docs.nvidia.com/cccl/libcudacxx/",
+  "https://docs.nvidia.com/cccl/"
+]
+match_threshold = 60.0
+
+[[library]]
+name = "cuda_runtime"
+description = "CUDA Runtime API"
+doc_type = "doxygen"
+index_url = "https://docs.nvidia.com/cuda/cuda-runtime-api/modules.html"
+base_urls = ["https://docs.nvidia.com/cuda/cuda-runtime-api/"]
+match_threshold = 60.0

@@ -14,6 +14,7 @@ import json
 import sys
 import argparse
 import os
+import tomllib
 from urllib.parse import urljoin
 from rapidfuzz import process, fuzz
 
@@ -21,6 +22,7 @@ import sphobjinv as soi
 
 BASE_URL = "https://docs.nvidia.com/cuda/cuda-runtime-api/"
 MODULES_URL = urljoin(BASE_URL, "modules.html")
+DEFAULT_REGISTRY_PATH = "prototype/registry.toml"
 CCCL_INV_URL = "https://nvidia.github.io/cccl/libcudacxx/objects.inv"
 CCCL_INV_CANDIDATES = [
     CCCL_INV_URL,
@@ -47,24 +49,18 @@ def probe_inventory_url(url, timeout=10):
     except Exception:
         return None
 
-def resolve_cccl_inventory_url(inv_url=None):
-    if inv_url:
-        resolved = probe_inventory_url(inv_url)
+def resolve_inventory_url(inventory_urls, base_urls, env_override=None):
+    if env_override:
+        resolved = probe_inventory_url(env_override)
         if resolved:
             return resolved
 
-    env_url = os.getenv("CCCL_INV_URL")
-    if env_url:
-        resolved = probe_inventory_url(env_url)
-        if resolved:
-            return resolved
-
-    for url in CCCL_INV_CANDIDATES:
+    for url in inventory_urls:
         resolved = probe_inventory_url(url)
         if resolved:
             return resolved
 
-    for base_url in CCCL_BASE_URLS:
+    for base_url in base_urls:
         try:
             response = requests.get(base_url, timeout=10)
             response.raise_for_status()
@@ -86,14 +82,10 @@ def fetch_soup(url, description=""):
         print(f"Error fetching {url}: {e}", file=sys.stderr)
         return None
 
-def get_cccl_groups(inv_url=CCCL_INV_URL):
+def get_cccl_groups(inv_url):
     try:
-        resolved_url = resolve_cccl_inventory_url(inv_url)
-        if not resolved_url:
-            print("Error fetching/parsing Sphinx inventory: no valid objects.inv found", file=sys.stderr)
-            return []
         # Let sphobjinv handle fetching/parsing to avoid API incompatibilities
-        inv = soi.Inventory(url=resolved_url)
+        inv = soi.Inventory(url=inv_url)
         
         groups = []
         for obj in inv.objects:
@@ -104,9 +96,9 @@ def get_cccl_groups(inv_url=CCCL_INV_URL):
                 # Sphinx inventory uses $ as placeholder for name
                 raw_uri = obj.uri
                 if "$" in raw_uri:
-                    final_url = urljoin(resolved_url, raw_uri.replace("$", obj.name))
+                    final_url = urljoin(inv_url, raw_uri.replace("$", obj.name))
                 else:
-                    final_url = urljoin(resolved_url, raw_uri)
+                    final_url = urljoin(inv_url, raw_uri)
 
                 groups.append({
                     "group": obj.name, # Function/Class name
@@ -189,6 +181,23 @@ def filter_groups(groups, keywords, use_fuzzy=False, threshold=60.0):
                      
     return filtered
 
+def load_registry(path):
+    try:
+        with open(path, "rb") as f:
+            return tomllib.load(f)
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        print(f"Error reading registry {path}: {e}", file=sys.stderr)
+        return None
+
+def get_library_config(registry, name):
+    libraries = registry.get("library", [])
+    for lib in libraries:
+        if lib.get("name") == name:
+            return lib
+    return None
+
 def main():
     parser = argparse.ArgumentParser(description="Topology Mapper: Discover API groups matching keywords.")
     parser.add_argument("--keywords", nargs="+", help="Keywords to filter API groups (e.g. 'Memory', 'Stream')")
@@ -196,15 +205,47 @@ def main():
     parser.add_argument("--list", action="store_true", help="Output in line-oriented format (name\\turl) for fzf")
     parser.add_argument("--fuzzy", action="store_true", help="Use fuzzy matching (requires rapidfuzz)")
     parser.add_argument("--threshold", type=float, default=60.0, help="Fuzzy match threshold (0-100)")
-    parser.add_argument("--source", choices=["cuda_runtime", "cccl"], default="cuda_runtime", help="Documentation source")
+    parser.add_argument("--source", default="cuda_runtime", help="Documentation source")
+    parser.add_argument("--registry", default=DEFAULT_REGISTRY_PATH, help="Registry TOML path")
     
     args = parser.parse_args()
     
+    registry = load_registry(args.registry)
+    library = get_library_config(registry, args.source) if registry else None
+
+    if registry and not library:
+        print(f"Error: source '{args.source}' not found in registry", file=sys.stderr)
+        sys.exit(1)
+
     # 1. Gather all candidates
-    if args.source == "cccl":
-        all_groups = get_cccl_groups(CCCL_INV_URL)
+    if library:
+        doc_type = library.get("doc_type")
+        if doc_type == "sphinx":
+            inventory_urls = library.get("inventory_urls", [])
+            base_urls = library.get("base_urls", [])
+            env_override = os.getenv("CCCL_INV_URL") if args.source == "cccl" else None
+            inv_url = resolve_inventory_url(inventory_urls, base_urls, env_override=env_override)
+            if not inv_url:
+                print("Error fetching/parsing Sphinx inventory: no valid objects.inv found", file=sys.stderr)
+                all_groups = []
+            else:
+                all_groups = get_cccl_groups(inv_url)
+        elif doc_type == "doxygen":
+            index_url = library.get("index_url", MODULES_URL)
+            all_groups = get_all_groups(index_url)
+        else:
+            print(f"Error: unsupported doc_type '{doc_type}' for source '{args.source}'", file=sys.stderr)
+            sys.exit(1)
     else:
-        all_groups = get_all_groups(MODULES_URL)
+        if args.source == "cccl":
+            inv_url = resolve_inventory_url(CCCL_INV_CANDIDATES, CCCL_BASE_URLS, env_override=os.getenv("CCCL_INV_URL"))
+            if not inv_url:
+                print("Error fetching/parsing Sphinx inventory: no valid objects.inv found", file=sys.stderr)
+                all_groups = []
+            else:
+                all_groups = get_cccl_groups(inv_url)
+        else:
+            all_groups = get_all_groups(MODULES_URL)
     
     # 2. Apply filter
     if args.keywords:
