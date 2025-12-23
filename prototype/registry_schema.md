@@ -27,6 +27,7 @@ At least one of the following must be present:
 - `enabled` (bool): Toggle entry. Default: true
 - `tags` (array of string): Free-form metadata, e.g. `["open", "vendor:nvidia"]`.
 - `auth` (string): Authentication hint, e.g. `none`, `cookie`, `token`.
+- `repo` (string): Repository URL, e.g. `https://github.com/NVIDIA/AMGX`.
 
 ## Example
 
@@ -45,4 +46,5 @@ base_urls = [
 ]
 match_threshold = 60.0
 tags = ["open", "vendor:nvidia"]
+repo = "https://github.com/NVIDIA/cccl"
 ```

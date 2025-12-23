@@ -1,6 +1,6 @@
 [[library]]
 name = "cccl"
-description = "CCCL libcudacxx"
+description = "CCCL libcudacxx and Thrust"
 doc_type = "sphinx"
 inventory_urls = [
   "https://nvidia.github.io/cccl/libcudacxx/objects.inv",
@@ -9,16 +9,18 @@ inventory_urls = [
   "https://nvidia.github.io/libcudacxx/latest/objects.inv",
   "https://nvidia.github.io/cccl/libcudacxx/latest/objects.inv",
   "https://docs.nvidia.com/cccl/libcudacxx/objects.inv",
-  "https://docs.nvidia.com/cccl/objects.inv"
+  "https://docs.nvidia.com/cccl/objects.inv",
 ]
 base_urls = [
   "https://nvidia.github.io/cccl/libcudacxx/",
   "https://nvidia.github.io/cccl/",
   "https://nvidia.github.io/libcudacxx/",
   "https://docs.nvidia.com/cccl/libcudacxx/",
-  "https://docs.nvidia.com/cccl/"
+  "https://docs.nvidia.com/cccl/",
 ]
 match_threshold = 60.0
+tags = ["thrust", "cub", "libcudacxx"]
+repo = "https://github.com/NVIDIA/cccl"
 
 [[library]]
 name = "cuda_runtime"
@@ -27,3 +29,126 @@ doc_type = "doxygen"
 index_url = "https://docs.nvidia.com/cuda/cuda-runtime-api/modules.html"
 base_urls = ["https://docs.nvidia.com/cuda/cuda-runtime-api/"]
 match_threshold = 60.0
+
+[[library]]
+name = "cublas"
+description = "GPU-accelerated basic linear algebra (BLAS) library with cuBLAS, cuBLASLt, and cuBLASXt APIs"
+doc_type = "sphinx"
+inventory_urls = ["https://docs.nvidia.com/cuda/cublas/objects.inv"]
+base_urls = ["https://docs.nvidia.com/cuda/cublas/"]
+tags = ["cuBLAS", "cuBLASLt", "cuBLASXt"]
+
+[[library]]
+name = "cublasmp"
+description = "Multi-process GPU-accelerated library for distributed dense linear algebra"
+doc_type = "sphinx"
+inventory_urls = ["https://docs.nvidia.com/cuda/cublasmp/objects.inv"]
+base_urls = ["https://docs.nvidia.com/cuda/cublasmp/"]
+
+[[library]]
+name = "cufft"
+description = "GPU-accelerated Fast Fourier Transform library"
+doc_type = "sphinx"
+inventory_urls = ["https://docs.nvidia.com/cuda/cufft/objects.inv"]
+base_urls = ["https://docs.nvidia.com/cuda/cufft/"]
+
+[[library]]
+name = "curand"
+description = "GPU-accelerated random number generation"
+doc_type = "doxygen"
+index_url = "https://docs.nvidia.com/cuda/curand/index.html"
+base_urls = ["https://docs.nvidia.com/cuda/curand/"]
+
+[[library]]
+name = "cusparse"
+description = "GPU-accelerated BLAS for sparse matrices"
+doc_type = "sphinx"
+inventory_urls = ["https://docs.nvidia.com/cuda/cusparse/objects.inv"]
+base_urls = ["https://docs.nvidia.com/cuda/cusparse/"]
+
+[[library]]
+name = "cusolver"
+description = "GPU-accelerated dense and sparse direct solvers"
+doc_type = "sphinx"
+inventory_urls = ["https://docs.nvidia.com/cuda/cusolver/objects.inv"]
+base_urls = ["https://docs.nvidia.com/cuda/cusolver/"]
+
+[[library]]
+name = "cudnn"
+description = "GPU-accelerated primitives for deep neural networks"
+doc_type = "sphinx"
+inventory_urls = [
+  "https://docs.nvidia.com/deeplearning/cudnn/latest/objects.inv",
+]
+base_urls = ["https://docs.nvidia.com/deeplearning/cudnn/latest/"]
+
+[[library]]
+name = "tensorrt"
+description = "High-performance deep learning inference optimizer"
+doc_type = "sphinx"
+inventory_urls = [
+  "https://docs.nvidia.com/deeplearning/tensorrt/latest/objects.inv",
+]
+base_urls = ["https://docs.nvidia.com/deeplearning/tensorrt/latest/"]
+
+[[library]]
+name = "nccl"
+description = "Multi-GPU, multi-node communication primitives"
+doc_type = "sphinx"
+inventory_urls = [
+  "https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/objects.inv",
+]
+base_urls = ["https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/"]
+repo = "https://github.com/NVIDIA/nccl"
+
+[[library]]
+name = "cutensor"
+description = "GPU-accelerated tensor linear algebra library"
+doc_type = "doxygen"
+index_url = "https://docs.nvidia.com/cuda/cutensor/index.html"
+base_urls = ["https://docs.nvidia.com/cuda/cutensor/"]
+
+[[library]]
+name = "amgx"
+description = "GPU-accelerated linear solvers for simulations"
+doc_type = "doxygen"
+index_url = "https://developer.nvidia.com/amgx"
+base_urls = ["https://developer.nvidia.com/amgx/"]
+repo = "https://github.com/NVIDIA/AMGX"
+
+[[library]]
+name = "cuda_math"
+description = "GPU-accelerated standard mathematical functions"
+doc_type = "sphinx"
+inventory_urls = ["https://docs.nvidia.com/cuda/cuda-math-api/objects.inv"]
+base_urls = ["https://docs.nvidia.com/cuda/cuda-math-api/"]
+
+[[library]]
+name = "cutlass"
+description = "High-performance linear algebra abstractions"
+doc_type = "sphinx"
+inventory_urls = ["https://docs.nvidia.com/cutlass/objects.inv"]
+base_urls = ["https://docs.nvidia.com/cutlass/"]
+repo = "https://github.com/NVIDIA/cutlass"
+
+[[library]]
+name = "nvshmem"
+description = "OpenSHMEM standard for GPU memory"
+doc_type = "doxygen"
+index_url = "https://docs.nvidia.com/nvshmem/api/index.html"
+base_urls = ["https://docs.nvidia.com/nvshmem/"]
+repo = "https://github.com/NVIDIA/nvshmem"
+
+[[library]]
+name = "cuquantum"
+description = "Quantum computing simulation libraries"
+doc_type = "sphinx"
+inventory_urls = ["https://docs.nvidia.com/cuda/cuquantum/objects.inv"]
+base_urls = ["https://docs.nvidia.com/cuda/cuquantum/"]
+tags = [
+  "cuDensityMat",
+  "cuPauliProp",
+  "cuStabilizer",
+  "cuStateVec",
+  "cuTensorNet",
+]
