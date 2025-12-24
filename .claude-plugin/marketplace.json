@@ -1,11 +1,11 @@
 {
-  "name": "skills-template",
+  "name": "cuda-x-skills",
   "owner": {
     "name": "ultimatile",
     "email": "ultimatile@users.noreply.github.com"
   },
   "metadata": {
-    "description": "Template repository for creating custom Claude skills",
+    "description": "CUDA-X library documentation and development skills",
     "version": "0.0.1"
   },
   "plugins": [
@@ -15,7 +15,7 @@
       "source": "./",
       "strict": false,
       "skills": [
-        "./skills/your-skill-name"
+        "./skills/cuda-webdoc-search"
       ]
     }
   ]

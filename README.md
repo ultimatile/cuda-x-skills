@@ -1,6 +1,6 @@
-# Custom Skills Repository
+# CUDA-X Skills Repository
 
-This repository contains custom skills for Claude.
+This repository contains custom skills for Claude, specifically focused on CUDA-X library documentation and development assistance.
 
 ## Structure
 
@@ -16,20 +16,20 @@ This repository contains custom skills for Claude.
 └── README.md
 ```
 
-**After creating skills:**
+**Current state:**
 
 ```
 .
 ├── .claude-plugin/
 │   └── marketplace.json
 ├── skills/
-│   ├── your-skill/        # Your actual skills as subdirectories
-│   │   ├── SKILL.md       # Required for each skill
-│   │   ├── scripts/       # Optional: Executable scripts
-│   │   ├── references/    # Optional: Reference documentation
-│   │   └── assets/        # Optional: Templates, images, fonts, etc.
-│   └── another-skill/
-│       └── SKILL.md
+│   ├── cuda-webdoc-search/    # CUDA-X documentation search skill
+│   │   ├── SKILL.md           # Skill definition
+│   │   ├── topology_mapper.py # Main search functionality
+│   │   ├── structure_extractor.py # Library structure extraction
+│   │   ├── registry.toml      # CUDA library registry
+│   │   └── references/        # Documentation and schemas
+│   └── SKILL.md               # Template (for creating new skills)
 ├── install-skills.sh
 └── README.md
 ```
@@ -124,13 +124,13 @@ Edit `.claude-plugin/marketplace.json` with your repository information:
 
 ```json
 {
-  "name": "your-repo-name",
+  "name": "cuda-x-skills",
   "owner": {
-    "name": "your-github-username",
-    "email": "your-email@example.com"
+    "name": "ultimatile",
+    "email": "ultimatile@users.noreply.github.com"
   },
   "metadata": {
-    "description": "Description of your skills collection",
+    "description": "CUDA-X library documentation and development skills",
     "version": "1.0.0"
   },
   "plugins": [
@@ -140,7 +140,7 @@ Edit `.claude-plugin/marketplace.json` with your repository information:
       "source": "./",
       "strict": false,
       "skills": [
-        "./skills/your-skill-name"
+        "./skills/cuda-webdoc-search"
       ]
     }
   ]
@@ -153,11 +153,40 @@ When you create a new skill, add its path to the `skills` array:
 
 ```json
 "skills": [
-  "./skills/skill-one",
-  "./skills/skill-two",
-  "./skills/skill-three"
+  "./skills/cuda-webdoc-search"
 ]
 ```
+
+## Using with Codex (experimental)
+
+Codex currently loads skills only from the global path `~/.codex/skills/**/SKILL.md` (one directory per skill). To install this repository's skills for Codex:
+
+1. Enable the experimental feature flag in `~/.codex/config.toml`:
+
+   ```toml
+   [features]
+   skills = true
+   ```
+
+2. Install the skills to Codex's path (global, not project-scoped):
+
+   ```bash
+   # Option A: Copy mode (default)
+   ./install-skills.sh --codex --all
+
+   # Option B: Symlink mode (recommended for development)
+   ./install-skills.sh --symlink --codex --all
+
+   # Option C: explicit path override (same effect as Option A)
+   SKILLS_INSTALL_PATH=$HOME/.codex/skills ./install-skills.sh --all
+   ```
+
+3. Restart Codex so it reloads the newly installed skills.
+
+Notes:
+- Codex does not currently support project-specific skill locations; the installs above are global.
+- Each skill must reside in its own directory (e.g., `~/.codex/skills/my-skill/SKILL.md`) with `name`/`description` kept to one line and within Codex limits (≤100/≤500 chars respectively).
+- Using `--symlink` allows automatic updates when you `git pull` in the repository.
 
 **Important**: The skill path format is `"./skills/skill-name"` where `skill-name` matches the directory name under `skills/`.
 
@@ -187,11 +216,32 @@ Copy skills directly to your project:
 # Install specific skills only
 ./install-skills.sh --skill your-skill-name
 
+# Install with symlinks (recommended for development)
+./install-skills.sh --symlink --all
+
+# Install with symlinks, forcefully overwriting existing files
+./install-skills.sh --symlink-force --all
+
 # Or manually copy individual skill
 cp -r skills/your-skill-name ~/.claude/skills/your-skill-name
 ```
 
 Skills in `.claude/skills/` are automatically detected by Claude Code. No additional configuration needed.
+
+**Symlink vs Copy Mode:**
+
+- **Copy mode** (default): Skills are copied to the installation directory
+  - Pros: Self-contained, won't break if source repository is moved/deleted
+  - Cons: Need to reinstall after updating the repository
+
+- **Symlink mode** (`--symlink`): Skills are symlinked to the source repository
+  - Pros: Updates automatically when you `git pull` in the source repository
+  - Cons: Requires the source repository to remain in place
+  - Recommended for: Active development, keeping skills up-to-date
+  - Note: If symlink creation fails, you'll be prompted to confirm force overwrite
+
+- **Symlink force mode** (`--symlink-force`): Same as symlink mode but forcefully overwrites existing files
+  - Use when: You want to replace existing files without being prompted
 
 **Note**: The install script only installs skill subdirectories (e.g., `skills/your-skill/`), not the template files in the root `skills/` directory.
 
