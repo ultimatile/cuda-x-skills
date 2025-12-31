@@ -62,15 +62,13 @@ def extract_sphinx_items(soup):
                     a.decompose()
                 signature = dt.get_text(" ", strip=True)
                 
-                # Name extraction (best effort from signature or id)
+                # Name extraction (prefer human-readable descname, fallback to id)
                 name = "Unknown"
-                if dt.get("id"):
+                descname = dt.find(class_="descname")
+                if descname:
+                    name = descname.get_text(strip=True)
+                elif dt.get("id"):
                     name = dt.get("id")
-                else:
-                    # Try to find the bold descname
-                    descname = dt.find(class_="descname")
-                    if descname:
-                        name = descname.get_text(strip=True)
                 
                 api_items.append({
                     "api_type": "function", 
