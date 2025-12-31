@@ -53,6 +53,7 @@ See `registry.toml` for the full list. Common ones:
 2. **Check domains**: Run `--stats` to see available domain types
 3. **Search**: Use `--keywords` with `--fuzzy` for flexible matching
 4. **Filter by domain**: Use `--domains cpp` for C++ APIs, `--domains c` for C APIs
+5. **Extract details**: Use `structure_extractor.py` to get full documentation content
 
 ## Examples
 
@@ -76,7 +77,42 @@ uv run topology_mapper.py --source cublas --domains std --keywords gemm
 # Returns: cublas-t-gemm, cublas-t-gemmex, etc. (doc section labels)
 ```
 
+### Extract API documentation details
+
+After finding a function URL, extract its full documentation:
+
+```bash
+uv run structure_extractor.py --url <url> --section <function_name>
+```
+
+Example:
+
+```bash
+uv run structure_extractor.py \
+  --url "https://docs.nvidia.com/cuda/cuquantum/latest/cutensornet/api/functions.html" \
+  --section "cutensornetTensorSVD"
+```
+
+Output is a brace-delimited text tree:
+
+```
+{
+cutensornetTensorSVD
+{
+cutensornetStatus_t cutensornetTensorSVD {
+const cutensornetHandle_t handle
+const cutensornetTensorDescriptor_t descTensorIn
+...
+}
+Performs SVD decomposition of a tensor. { ... }
+Parameters { ... }
+}
+}
+```
+
 ## Output Format
+
+### topology_mapper.py
 
 JSON output includes:
 
@@ -85,8 +121,19 @@ JSON output includes:
 - `filtered_count`: APIs matching keywords
 - `candidates`: List of matching APIs with `group` (name), `url`, `domain`, `role`
 
+### structure_extractor.py
+
+Brace-delimited text tree where:
+- `{` `}` denote hierarchy
+- Text content is preserved
+- Inline elements (code, links) are flattened to text
+
+Options:
+- `--section <id>`: Extract only a specific section
+- `--main-only`: Extract only the main content area
+
 ## Files
 
-- `topology_mapper.py` - Main search script
+- `topology_mapper.py` - Search APIs across library inventories
+- `structure_extractor.py` - Extract documentation content as text tree
 - `registry.toml` - Library metadata (URLs, doc types)
-- `structure_extractor.py` - Extract doc structure from a URL

@@ -7,194 +7,243 @@
 # ///
 
 import requests
-from bs4 import BeautifulSoup
-import json
+from bs4 import BeautifulSoup, NavigableString
 import sys
 import argparse
 import os
 
+
 def fetch_content(source):
     if os.path.exists(source):
-        with open(source, 'r', encoding='utf-8') as f:
+        with open(source, "r", encoding="utf-8") as f:
             return f.read()
     else:
         try:
-            response = requests.get(source, timeout=10)
+            response = requests.get(source, timeout=30)
             response.raise_for_status()
             return response.content
         except Exception as e:
             print(f"Error fetching {source}: {e}", file=sys.stderr)
             return None
 
-def extract_sphinx_items(soup):
-    """Extraction logic for Sphinx-generated docs (CCCL)"""
-    api_items = []
-    # Sphinx typically uses <dl> for definitions
-    # Look for dl with class "cpp function" or similar, or just check dt with sig-object
-    
-    definitions = soup.find_all("dl")
-    for dl in definitions:
-        # Sphinx puts multiple <dt> items before a <dd> if there are overloads
-        # Or sometimes interleaved. We need to handle dt/dd pairing carefully.
-        # But commonly in standard docs: dt, dt, dd
-        
-        # Collect all signatures in this dl block
-        current_description = ""
-        dd = dl.find("dd")
-        if dd:
-            current_description = dd.get_text(" ", strip=True)
-            current_description = current_description[:300] + "..." if len(current_description) > 300 else current_description
 
-        dts = dl.find_all("dt")
-        for dt in dts:
-            try:
-                if "sig-object" not in dt.get("class", []):
-                     # Newer sphinx might strictly use sig-object, or check parent class
-                     # For now, if it's in a dl.cpp/function block, assume it's relevant
-                     # But check if it really looks like a signature
-                     if not dt.get("id"):
-                         continue
+import re
 
-                # Signature extraction
-                # Remove headerlink if present - duplicate soup to not destroy original if shared?
-                # Actually soup modification is fine here
-                for a in dt.find_all("a", class_="headerlink"):
-                    a.decompose()
-                signature = dt.get_text(" ", strip=True)
-                
-                # Name extraction (prefer human-readable descname, fallback to id)
-                name = "Unknown"
-                descname = dt.find(class_="descname")
-                if descname:
-                    name = descname.get_text(strip=True)
-                elif dt.get("id"):
-                    name = dt.get("id")
-                
-                api_items.append({
-                    "api_type": "function", 
-                    "name": name,
-                    "signature": signature,
-                    "description": current_description,
-                    "parameters": []
-                })
-                
-            except Exception as e:
-                print(f"Error parsing Sphinx item: {e}", file=sys.stderr)
-                continue
-            
-    return api_items
 
-def extract_api_items(soup):
-    # Detect doc type
-    if soup.find("dl", class_="cpp"):
-        return extract_sphinx_items(soup)
-    elif soup.find(class_="memitem") or soup.find("dt", class_="description"):
-        # Existing Doxygen logic (Standard & New NVIDIA format)
-        api_items = []
-        
-        # Strategy 1: Look for .memitem (Older Doxygen)
-        mem_items = soup.find_all(class_="memitem")
-        if mem_items:
-            for item in mem_items:
-                try:
-                    memproto = item.find(class_="memproto")
-                    if not memproto: continue
-                    memname = item.find(class_="memname")
-                    name = memname.get_text(strip=True) if memname else "Unknown"
-                    signature = memproto.get_text(" ", strip=True)
-                    memdoc = item.find(class_="memdoc")
-                    description = memdoc.get_text(" ", strip=True) if memdoc else ""
-                    params = []
-                    if memdoc:
-                        param_table = memdoc.find(class_="params")
-                        if param_table:
-                            rows = param_table.find_all("tr")
-                            for row in rows:
-                                cols = row.find_all("td")
-                                if len(cols) >= 2:
-                                    p_name = cols[0].get_text(strip=True)
-                                    p_desc = cols[1].get_text(" ", strip=True)
-                                    params.append({"name": p_name, "description": p_desc})
-                    api_items.append({
-                        "api_type": "function",
-                        "name": name,
-                        "signature": signature,
-                        "description": description[:300] + "..." if len(description) > 300 else description,
-                        "parameters": params
-                    })
-                except Exception: continue
-        
-        # Strategy 2: Look for dt.description/dd.description (Newer NVIDIA format)
-        # Note: These are often pairs.
-        dt_items = soup.find_all("dt", class_="description")
-        for dt in dt_items:
-            try:
-                # Name can be found in a child span with class 'member_name'
-                # or just 'apiItemName' inside?
-                # From log: <span class="member_name"><a ...>cudaArrayGetInfo</a>...</span>
-                name_span = dt.find(class_="member_name")
-                name = name_span.get_text(strip=True) if name_span else "Unknown"
-                
-                # Signature is the whole dt text (clean up newlines)
-                # Remove anchor links from signature extraction if needed ??
-                signature = dt.get_text(" ", strip=True)
-                
-                # Find corresponding dd
-                dd = dt.find_next_sibling("dd", class_="description")
-                if not dd:
-                    continue
-                
-                # Description: direct text of dd or div.section inside
-                # From log: <div class="section">Gets...</div>
-                desc_div = dd.find("div", class_="section")
-                if desc_div:
-                    description = desc_div.get_text(" ", strip=True)
-                else:
-                    description = dd.get_text(" ", strip=True)
-                
-                # Parameters: dl.table-display-params
-                params = []
-                param_dl = dd.find("dl", class_="table-display-params")
-                if param_dl:
-                     # pairs of dt (name) dd (desc)
-                     p_dts = param_dl.find_all("dt")
-                     for p_dt in p_dts:
-                         p_dd = p_dt.find_next_sibling("dd")
-                         p_name = p_dt.get_text(strip=True)
-                         p_desc = p_dd.get_text(" ", strip=True) if p_dd else ""
-                         params.append({"name": p_name, "description": p_desc})
+def is_noise(text):
+    """Check if text is noise (punctuation only, very short, etc.)."""
+    if not text:
+        return True
+    stripped = text.strip()
+    # Single punctuation or very short meaningless tokens
+    if stripped in {
+        "#",
+        ",",
+        ".",
+        "(",
+        ")",
+        "[",
+        "]",
+        ";",
+        ":",
+        "*",
+        "&",
+        "–",
+        "-",
+        "",
+    }:
+        return True
+    # Only whitespace
+    if not stripped:
+        return True
+    return False
 
-                api_items.append({
-                    "api_type": "function",
-                    "name": name,
-                    "signature": signature,
-                    "description": description[:300] + "..." if len(description) > 300 else description,
-                    "parameters": params
-                })
 
-            except Exception as e:
-                print(f"Error parsing NVIDIA item: {e}", file=sys.stderr)
-                continue
-                
-        return api_items
-    else:
-        # Fallback or generic
-        return []
+def format_output(text):
+    """Clean up the final output."""
+    # Normalize whitespace (but preserve newlines for structure)
+    lines = text.split("\n")
+    result = []
+    for line in lines:
+        # Collapse multiple spaces to one
+        line = re.sub(r"[ \t]+", " ", line).strip()
+        if line:
+            result.append(line)
+    return "\n".join(result)
+
+
+def html_to_brace_tree(element, depth=0):
+    """Convert HTML element to brace-delimited text tree.
+
+    Output format:
+        text content {
+          child content {
+            nested content
+          }
+        }
+    """
+    # Skip unwanted tags
+    skip_tags = {
+        "script",
+        "style",
+        "nav",
+        "footer",
+        "header",
+        "meta",
+        "link",
+        "noscript",
+        "svg",
+        "img",
+    }
+    if hasattr(element, "name") and element.name in skip_tags:
+        return ""
+
+    # Handle text nodes
+    if isinstance(element, NavigableString):
+        text = str(element).strip()
+        # Skip empty or whitespace-only
+        if not text or text == "\n":
+            return ""
+        return text
+
+    # For inline elements, just get text content directly
+    inline_tags = {"span", "a", "code", "em", "strong", "b", "i", "pre"}
+    if hasattr(element, "name") and element.name in inline_tags:
+        text = element.get_text(" ", strip=True)
+        if is_noise(text):
+            return ""
+        return text
+
+    # Get direct text content (not from children)
+    direct_text = ""
+    for child in element.children:
+        if isinstance(child, NavigableString):
+            t = str(child).strip()
+            if t and t != "\n":
+                direct_text += t + " "
+    direct_text = direct_text.strip()
+
+    # Process children (non-text)
+    child_results = []
+    for child in element.children:
+        if isinstance(child, NavigableString):
+            continue
+        result = html_to_brace_tree(child, depth + 1)
+        if result and not is_noise(result):
+            child_results.append(result)
+
+    # Build output
+    if not direct_text and not child_results:
+        return ""
+
+    # Clean direct_text
+    if is_noise(direct_text):
+        direct_text = ""
+
+    if not child_results:
+        # Leaf node with only text
+        return direct_text
+
+    if not direct_text:
+        # No direct text, just children
+        if len(child_results) == 1:
+            return child_results[0]
+        # Join with newlines, add braces only if multiple children
+        return "{\n" + "\n".join(child_results) + "\n}"
+
+    # Has both text and children
+    return direct_text + " {\n" + "\n".join(child_results) + "\n}"
+
+
+def extract_section(soup, section_id):
+    """Extract a specific section by ID."""
+    # Try finding by id attribute
+    section = soup.find(id=section_id)
+    if section:
+        # Go up to find the containing section/div
+        parent = section.find_parent(["section", "div", "dl"])
+        if parent:
+            return parent
+        return section
+
+    # Try finding by text content in headings
+    for heading in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
+        if section_id.lower() in heading.get_text().lower():
+            # Return the parent section
+            parent = heading.find_parent(["section", "div"])
+            if parent:
+                return parent
+            # Return heading and following siblings
+            return heading
+
+    return None
+
+
+def clean_soup(soup):
+    """Remove unwanted elements from soup."""
+    # Remove script, style, nav, etc.
+    for tag in soup(["script", "style", "nav", "footer", "header", "noscript"]):
+        tag.decompose()
+
+    # Remove hidden elements
+    for tag in soup.find_all(
+        attrs={"style": lambda x: x and "display:none" in x.replace(" ", "")}
+    ):
+        tag.decompose()
+
+    return soup
+
 
 def main():
-    parser = argparse.ArgumentParser(description="Structure Extractor: Mine API data from a specific NVIDIA doc page.")
-    parser.add_argument("--url", required=True, help="Target URL or local file path to extract from")
-    
+    parser = argparse.ArgumentParser(
+        description="Structure Extractor: Extract doc content as brace-delimited tree."
+    )
+    parser.add_argument(
+        "--url", required=True, help="Target URL or local file path to extract from"
+    )
+    parser.add_argument(
+        "--section",
+        help="Extract only a specific section (by ID or heading text)",
+    )
+    parser.add_argument(
+        "--main-only",
+        action="store_true",
+        help="Extract only the main content area",
+    )
+
     args = parser.parse_args()
-    
+
     content = fetch_content(args.url)
     if not content:
         sys.exit(1)
-        
-    soup = BeautifulSoup(content, 'html.parser')
-    items = extract_api_items(soup)
-    
-    print(json.dumps(items, indent=2))
+
+    soup = BeautifulSoup(content, "html.parser")
+    soup = clean_soup(soup)
+
+    # Find main content area if requested
+    if args.main_only:
+        main = (
+            soup.find("main")
+            or soup.find(id="main-content")
+            or soup.find(class_="main-content")
+        )
+        if main:
+            soup = main
+
+    # Extract specific section if requested
+    if args.section:
+        section = extract_section(soup, args.section)
+        if section:
+            soup = section
+        else:
+            print(f"Section '{args.section}' not found", file=sys.stderr)
+            sys.exit(1)
+
+    # Convert to brace tree and format
+    result = html_to_brace_tree(soup)
+    result = format_output(result)
+    print(result)
+
 
 if __name__ == "__main__":
     main()
