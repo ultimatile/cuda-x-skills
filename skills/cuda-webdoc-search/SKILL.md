@@ -21,7 +21,7 @@ This skill provides intelligent search and navigation across CUDA-X library docu
 
 ```bash
 # Search for a symbol across all libraries
-uv run topology_mapper.py "cublasGemm"
+uv run topology_mapper.py --keywords "cublasGemm"
 
 # Extract structure from specific library
 uv run structure_extractor.py --library cublas
