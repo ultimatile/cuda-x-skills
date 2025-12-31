@@ -22,7 +22,7 @@ import sphobjinv as soi
 
 BASE_URL = "https://docs.nvidia.com/cuda/cuda-runtime-api/"
 MODULES_URL = urljoin(BASE_URL, "modules.html")
-DEFAULT_REGISTRY_PATH = "./registry.toml"
+DEFAULT_REGISTRY_PATH = "registry.toml"
 CCCL_INV_URL = "https://nvidia.github.io/cccl/libcudacxx/objects.inv"
 CCCL_INV_CANDIDATES = [
     CCCL_INV_URL,
@@ -86,12 +86,33 @@ def fetch_soup(url, description=""):
         return None
 
 
-def get_sphinx_groups(inv_url, source_name):
+def get_inventory_stats(inv_url):
+    """Fetch domain statistics from a Sphinx inventory file.
+
+    Args:
+        inv_url: URL to the Sphinx objects.inv file
+
+    Returns:
+        dict with 'total' count and 'domains' mapping domain->count
+    """
+    try:
+        inv = soi.Inventory(url=inv_url)
+        domains = {}
+        for obj in inv.objects:
+            domains[obj.domain] = domains.get(obj.domain, 0) + 1
+        return {"total": len(inv.objects), "domains": domains}
+    except Exception as e:
+        print(f"Error fetching/parsing Sphinx inventory: {e}", file=sys.stderr)
+        return {"total": 0, "domains": {}}
+
+
+def get_sphinx_groups(inv_url, source_name, domains=None):
     """Fetch API groups from a Sphinx inventory file.
 
     Args:
         inv_url: URL to the Sphinx objects.inv file
         source_name: Name of the source library for tagging results
+        domains: Set of domains to include, or None for all domains
     """
     try:
         # Let sphobjinv handle fetching/parsing to avoid API incompatibilities
@@ -99,25 +120,26 @@ def get_sphinx_groups(inv_url, source_name):
 
         groups = []
         for obj in inv.objects:
-            # Filter for C++ functions/classes/etc useful for mining
-            # obj.domain='cpp', obj.role='function' or 'class' might be best
-            # For broad mapping, let's take mostcpp items
-            if obj.domain == "cpp":
-                # Sphinx inventory uses $ as placeholder for name
-                raw_uri = obj.uri
-                if "$" in raw_uri:
-                    final_url = urljoin(inv_url, raw_uri.replace("$", obj.name))
-                else:
-                    final_url = urljoin(inv_url, raw_uri)
+            # Filter by domain if specified
+            if domains is not None and obj.domain not in domains:
+                continue
 
-                groups.append(
-                    {
-                        "group": obj.name,  # Function/Class name
-                        "url": final_url,
-                        "role": obj.role,
-                        "source": source_name,
-                    }
-                )
+            # Sphinx inventory uses $ as placeholder for name
+            raw_uri = obj.uri
+            if "$" in raw_uri:
+                final_url = urljoin(inv_url, raw_uri.replace("$", obj.name))
+            else:
+                final_url = urljoin(inv_url, raw_uri)
+
+            groups.append(
+                {
+                    "group": obj.name,  # Function/Class name
+                    "url": final_url,
+                    "role": obj.role,
+                    "domain": obj.domain,
+                    "source": source_name,
+                }
+            )
         return groups
     except Exception as e:
         print(f"Error fetching/parsing Sphinx inventory: {e}", file=sys.stderr)
@@ -215,6 +237,20 @@ def get_library_config(registry, name):
     return None
 
 
+def parse_domains(domains_str):
+    """Parse comma-separated domain string into a set.
+
+    Args:
+        domains_str: Comma-separated domains (e.g. 'cpp,c,std') or 'all'
+
+    Returns:
+        Set of domain strings, or None if 'all'
+    """
+    if domains_str is None or domains_str.lower() == "all":
+        return None
+    return set(d.strip() for d in domains_str.split(",") if d.strip())
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Topology Mapper: Discover API groups matching keywords."
@@ -242,8 +278,19 @@ def main():
     parser.add_argument(
         "--registry", default=DEFAULT_REGISTRY_PATH, help="Registry TOML path"
     )
+    parser.add_argument(
+        "--domains",
+        default="all",
+        help="Comma-separated domains to include (e.g. 'cpp,c,std') or 'all' (default: all)",
+    )
+    parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="Show domain statistics for the inventory instead of searching",
+    )
 
     args = parser.parse_args()
+    domains_filter = parse_domains(args.domains)
 
     registry = load_registry(args.registry)
     library = get_library_config(registry, args.source) if registry else None
@@ -252,7 +299,8 @@ def main():
         print(f"Error: source '{args.source}' not found in registry", file=sys.stderr)
         sys.exit(1)
 
-    # 1. Gather all candidates
+    # Resolve inventory URL for sphinx sources
+    inv_url = None
     if library:
         doc_type = library.get("doc_type")
         if doc_type == "sphinx":
@@ -262,6 +310,38 @@ def main():
             inv_url = resolve_inventory_url(
                 inventory_urls, base_urls, env_override=env_override
             )
+    elif args.source == "cccl":
+        inv_url = resolve_inventory_url(
+            CCCL_INV_CANDIDATES,
+            CCCL_BASE_URLS,
+            env_override=os.getenv("CCCL_INV_URL"),
+        )
+
+    # Handle --stats option
+    if args.stats:
+        if inv_url:
+            stats = get_inventory_stats(inv_url)
+            # Sort domains by count descending
+            sorted_domains = sorted(stats["domains"].items(), key=lambda x: -x[1])
+            output = {
+                "source": args.source,
+                "inventory_url": inv_url,
+                "total": stats["total"],
+                "domains": {d: c for d, c in sorted_domains},
+            }
+            print(json.dumps(output, indent=2))
+        else:
+            print(
+                f"Error: --stats requires a sphinx source with valid inventory",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        return
+
+    # 1. Gather all candidates
+    if library:
+        doc_type = library.get("doc_type")
+        if doc_type == "sphinx":
             if not inv_url:
                 print(
                     "Error fetching/parsing Sphinx inventory: no valid objects.inv found",
@@ -269,7 +349,7 @@ def main():
                 )
                 all_groups = []
             else:
-                all_groups = get_sphinx_groups(inv_url, args.source)
+                all_groups = get_sphinx_groups(inv_url, args.source, domains_filter)
         elif doc_type == "doxygen":
             index_url = library.get("index_url", MODULES_URL)
             all_groups = get_all_groups(index_url)
@@ -281,11 +361,6 @@ def main():
             sys.exit(1)
     else:
         if args.source == "cccl":
-            inv_url = resolve_inventory_url(
-                CCCL_INV_CANDIDATES,
-                CCCL_BASE_URLS,
-                env_override=os.getenv("CCCL_INV_URL"),
-            )
             if not inv_url:
                 print(
                     "Error fetching/parsing Sphinx inventory: no valid objects.inv found",
@@ -293,7 +368,7 @@ def main():
                 )
                 all_groups = []
             else:
-                all_groups = get_sphinx_groups(inv_url, "cccl")
+                all_groups = get_sphinx_groups(inv_url, "cccl", domains_filter)
         else:
             all_groups = get_all_groups(MODULES_URL)
 
@@ -314,6 +389,7 @@ def main():
             "source": args.source,
             "total_found": len(all_groups),
             "filtered_count": len(candidates),
+            "domains_filter": args.domains,
             "candidates": candidates,
         }
         print(json.dumps(output, indent=2))
