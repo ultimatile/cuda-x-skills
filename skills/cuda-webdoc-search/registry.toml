@@ -143,8 +143,11 @@ repo = "https://github.com/NVIDIA/nvshmem"
 name = "cuquantum"
 description = "Quantum computing simulation libraries"
 doc_type = "sphinx"
-inventory_urls = ["https://docs.nvidia.com/cuda/cuquantum/objects.inv"]
-base_urls = ["https://docs.nvidia.com/cuda/cuquantum/"]
+# 2026-01-01: NVIDIA's versioned archives are incomplete (only 24.11 exists).
+# Root /cuquantum/objects.inv exists but generates broken URLs (HTML is under /latest/).
+# Use /latest/ for reliable URL resolution.
+inventory_urls = ["https://docs.nvidia.com/cuda/cuquantum/latest/objects.inv"]
+base_urls = ["https://docs.nvidia.com/cuda/cuquantum/latest/"]
 tags = [
   "cuDensityMat",
   "cuPauliProp",
