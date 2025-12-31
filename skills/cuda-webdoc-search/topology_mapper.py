@@ -86,7 +86,13 @@ def fetch_soup(url, description=""):
         return None
 
 
-def get_cccl_groups(inv_url):
+def get_sphinx_groups(inv_url, source_name):
+    """Fetch API groups from a Sphinx inventory file.
+
+    Args:
+        inv_url: URL to the Sphinx objects.inv file
+        source_name: Name of the source library for tagging results
+    """
     try:
         # Let sphobjinv handle fetching/parsing to avoid API incompatibilities
         inv = soi.Inventory(url=inv_url)
@@ -109,7 +115,7 @@ def get_cccl_groups(inv_url):
                         "group": obj.name,  # Function/Class name
                         "url": final_url,
                         "role": obj.role,
-                        "source": "cccl",
+                        "source": source_name,
                     }
                 )
         return groups
@@ -263,7 +269,7 @@ def main():
                 )
                 all_groups = []
             else:
-                all_groups = get_cccl_groups(inv_url)
+                all_groups = get_sphinx_groups(inv_url, args.source)
         elif doc_type == "doxygen":
             index_url = library.get("index_url", MODULES_URL)
             all_groups = get_all_groups(index_url)
@@ -287,7 +293,7 @@ def main():
                 )
                 all_groups = []
             else:
-                all_groups = get_cccl_groups(inv_url)
+                all_groups = get_sphinx_groups(inv_url, "cccl")
         else:
             all_groups = get_all_groups(MODULES_URL)
 
