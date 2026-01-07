@@ -12,9 +12,11 @@
 #   --skill <name>      Install specific skill(s) (can be used multiple times)
 #   --symlink           Create symlinks instead of copying (enables automatic updates)
 #   --symlink-force     Create symlinks with force flag (overwrite existing files without prompt)
+#   --codex             Install to Codex global skills path (~/.codex/skills)
+#   --codex-repo        Install to Codex repository-level path (./.codex/skills)
 #
 # Environment Variables:
-#   SKILLS_INSTALL_PATH  Custom installation path (default: $PWD/.claude/skills or ~/.codex/skills when --codex is used)
+#   SKILLS_INSTALL_PATH  Custom installation path (default: $PWD/.claude/skills, ~/.codex/skills with --codex, or ./.codex/skills with --codex-repo)
 
 set -e
 
@@ -27,8 +29,10 @@ NC='\033[0m' # No Color
 # Default installation paths
 DEFAULT_INSTALL_PATH="$PWD/.claude/skills"
 CODEX_INSTALL_PATH="$HOME/.codex/skills"
+CODEX_REPO_INSTALL_PATH="$PWD/.codex/skills"
 INSTALL_PATH="$DEFAULT_INSTALL_PATH"
 USE_CODEX_PATH=false
+USE_CODEX_REPO_PATH=false
 USE_SYMLINK=false
 USE_SYMLINK_FORCE=false
 
@@ -68,9 +72,10 @@ Options:
   --symlink           Create symlinks instead of copying (enables automatic updates)
   --symlink-force     Create symlinks with force flag (overwrite existing files without prompt)
   --codex             Install to Codex global skills path (~/.codex/skills)
+  --codex-repo        Install to Codex repository-level path (./.codex/skills)
 
 Environment Variables:
-  SKILLS_INSTALL_PATH  Custom installation path (default: \$PWD/.claude/skills or ~/.codex/skills with --codex)
+  SKILLS_INSTALL_PATH  Custom installation path (default: \$PWD/.claude/skills, ~/.codex/skills with --codex, or ./.codex/skills with --codex-repo)
 
 Examples:
   # Install all skills to default location (copy mode)
@@ -97,12 +102,19 @@ Examples:
   # Install for Codex (global) with symlinks
   ./install-skills.sh --symlink --codex --all
 
+  # Install for Codex (repository-level) with symlinks
+  ./install-skills.sh --symlink --codex-repo --all
+
 Note:
   When using --symlink, the skills will reference this repository directly.
   Any updates to the repository (e.g., git pull) will be immediately reflected
   in all installations. This is useful for development and keeping skills up-to-date.
 
   Use --symlink-force when you want to overwrite existing files without being prompted.
+
+  Codex skill locations (in order of precedence):
+    --codex-repo: ./.codex/skills (repository-level, highest precedence)
+    --codex:      ~/.codex/skills (user-level, lower precedence)
 
 EOF
 }
@@ -223,6 +235,10 @@ while [[ $# -gt 0 ]]; do
             USE_CODEX_PATH=true
             shift
             ;;
+        --codex-repo)
+            USE_CODEX_REPO_PATH=true
+            shift
+            ;;
         --skill)
             INSTALL_ALL=false
             if [ -z "$2" ] || [[ "$2" == --* ]]; then
@@ -244,6 +260,8 @@ done
 # Resolve installation path after parsing flags/environment
 if [ "$USE_CODEX_PATH" = true ]; then
     INSTALL_PATH="${SKILLS_INSTALL_PATH:-$CODEX_INSTALL_PATH}"
+elif [ "$USE_CODEX_REPO_PATH" = true ]; then
+    INSTALL_PATH="${SKILLS_INSTALL_PATH:-$CODEX_REPO_INSTALL_PATH}"
 else
     INSTALL_PATH="${SKILLS_INSTALL_PATH:-$DEFAULT_INSTALL_PATH}"
 fi
