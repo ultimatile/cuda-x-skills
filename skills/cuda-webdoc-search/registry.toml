@@ -104,16 +104,15 @@ repo = "https://github.com/NVIDIA/nccl"
 [[library]]
 name = "cutensor"
 description = "GPU-accelerated tensor linear algebra library"
-doc_type = "doxygen"
-index_url = "https://docs.nvidia.com/cuda/cutensor/index.html"
-base_urls = ["https://docs.nvidia.com/cuda/cutensor/"]
+doc_type = "sphinx_noinv"
+index_url = "https://docs.nvidia.com/cuda/cutensor/latest/"
+base_urls = ["https://docs.nvidia.com/cuda/cutensor/latest/"]
 
 [[library]]
 name = "amgx"
 description = "GPU-accelerated linear solvers for simulations"
-doc_type = "doxygen"
-index_url = "https://developer.nvidia.com/amgx"
-base_urls = ["https://developer.nvidia.com/amgx/"]
+doc_type = "pdf"
+doc_url = "https://github.com/NVIDIA/AMGX/blob/main/doc/AMGX_Reference.pdf"
 repo = "https://github.com/NVIDIA/AMGX"
 
 [[library]]
