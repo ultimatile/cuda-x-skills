@@ -93,6 +93,32 @@ def audit_sphinx(lib):
                 "detail": f"{url} -> {url_check.get('status') or url_check.get('error')}",
             })
 
+    # Fallback: try deriving objects.inv from base_urls
+    if not inv_found:
+        for base_url in lib.get("base_urls", []):
+            fallback = base_url.rstrip("/") + "/objects.inv"
+            url_check = check_url(fallback)
+            if url_check["ok"]:
+                inv_found = True
+                results["checks"].append({"check": "inventory_url (base_url fallback)", "ok": True, "detail": fallback})
+                try:
+                    inv = soi.Inventory(url=fallback)
+                    domains = {}
+                    for obj in inv.objects:
+                        domains[obj.domain] = domains.get(obj.domain, 0) + 1
+                    total = len(inv.objects)
+                    results["checks"].append({
+                        "check": "inventory_parse",
+                        "ok": total > 0,
+                        "detail": f"{total} objects, domains: {domains}",
+                    })
+                    if total == 0:
+                        results["ok"] = False
+                except Exception as e:
+                    results["checks"].append({"check": "inventory_parse", "ok": False, "detail": str(e)})
+                    results["ok"] = False
+                break
+
     if not inv_found:
         results["ok"] = False
 
