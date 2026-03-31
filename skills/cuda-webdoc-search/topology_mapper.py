@@ -424,6 +424,18 @@ def main():
             group_urls = [g["url"] for g in top_groups]
             members = get_doxygen_members(group_urls, source_name=args.source)
             all_groups = top_groups + members
+        elif doc_type == "pdf":
+            doc_url = library.get("doc_url", "")
+            output = {
+                "source": args.source,
+                "doc_type": "pdf",
+                "doc_url": doc_url,
+                "message": f"'{args.source}' is distributed as a PDF manual only. "
+                "Symbol search is not available. "
+                "Download the PDF to read the documentation.",
+            }
+            print(json.dumps(output, indent=2))
+            return
         else:
             print(
                 f"Error: unsupported doc_type '{doc_type}' for source '{args.source}'",

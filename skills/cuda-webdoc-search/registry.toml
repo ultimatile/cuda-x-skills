@@ -112,7 +112,7 @@ base_urls = ["https://docs.nvidia.com/cuda/cutensor/latest/"]
 name = "amgx"
 description = "GPU-accelerated linear solvers for simulations"
 doc_type = "pdf"
-doc_url = "https://github.com/NVIDIA/AMGX/blob/main/doc/AMGX_Reference.pdf"
+doc_url = "https://github.com/NVIDIA/AMGX/raw/main/doc/AMGX_Reference.pdf"
 repo = "https://github.com/NVIDIA/AMGX"
 
 [[library]]
@@ -126,8 +126,8 @@ base_urls = ["https://docs.nvidia.com/cuda/cuda-math-api/"]
 name = "cutlass"
 description = "High-performance linear algebra abstractions"
 doc_type = "sphinx"
-inventory_urls = ["https://docs.nvidia.com/cutlass/objects.inv"]
-base_urls = ["https://docs.nvidia.com/cutlass/"]
+inventory_urls = ["https://docs.nvidia.com/cutlass/latest/objects.inv"]
+base_urls = ["https://docs.nvidia.com/cutlass/latest/"]
 repo = "https://github.com/NVIDIA/cutlass"
 
 [[library]]
