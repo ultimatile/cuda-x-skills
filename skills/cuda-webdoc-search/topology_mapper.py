@@ -176,6 +176,28 @@ def get_all_groups(modules_url, source_name="cuda_runtime"):
 _DOXYGEN_MEMBER_RE = re.compile(r"^#(group__\w+_1\w+)")
 
 
+def _extract_member_name(a_tag):
+    """Extract a disambiguated member name from Doxygen HTML.
+
+    Doxygen member summary rows typically have structure:
+      <td class="memItemLeft">return_type</td>
+      <td class="memItemRight"><a href="...">name</a> (params)</td>
+    The parent <td> text includes the parameter list, which disambiguates
+    overloaded functions like curand(curandStateXORWOW_t*) vs curand(curandStateMtgp32_t*).
+    """
+    bare_name = a_tag.get_text(strip=True)
+
+    # Try parent <td> (summary table layout)
+    for tag_name in ("td", "dt"):
+        parent = a_tag.find_parent(tag_name)
+        if parent:
+            full_text = re.sub(r"\s+", " ", parent.get_text(" ", strip=True)).strip()
+            if full_text and full_text != bare_name:
+                return full_text
+
+    return bare_name
+
+
 def get_doxygen_members(group_urls, source_name):
     """Discover function-level members from Doxygen group pages.
 
@@ -205,7 +227,7 @@ def get_doxygen_members(group_urls, source_name):
                 continue
             seen.add(full_url)
 
-            name = a.get_text(strip=True)
+            name = _extract_member_name(a)
             if not name:
                 continue
             members.append(
@@ -416,9 +438,9 @@ def main():
             else:
                 all_groups = get_sphinx_groups(inv_url, "cccl", domains_filter)
         else:
-            top_groups = get_all_groups(MODULES_URL, source_name=args.source)
+            top_groups = get_all_groups(MODULES_URL, source_name="cuda_runtime")
             group_urls = [g["url"] for g in top_groups]
-            members = get_doxygen_members(group_urls, source_name=args.source)
+            members = get_doxygen_members(group_urls, source_name="cuda_runtime")
             all_groups = top_groups + members
 
     # 2. Apply filter
