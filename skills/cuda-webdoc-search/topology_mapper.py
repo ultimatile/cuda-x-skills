@@ -426,15 +426,18 @@ def main():
             all_groups = top_groups + members
         elif doc_type == "pdf":
             doc_url = library.get("doc_url", "")
-            output = {
-                "source": args.source,
-                "doc_type": "pdf",
-                "doc_url": doc_url,
-                "message": f"'{args.source}' is distributed as a PDF manual only. "
-                "Symbol search is not available. "
-                "Download the PDF to read the documentation.",
-            }
-            print(json.dumps(output, indent=2))
+            if args.list:
+                print(f"[PDF manual]\t{doc_url}")
+            else:
+                output = {
+                    "source": args.source,
+                    "doc_type": "pdf",
+                    "doc_url": doc_url,
+                    "message": f"'{args.source}' is distributed as a PDF manual only. "
+                    "Symbol search is not available. "
+                    "Download the PDF to read the documentation.",
+                }
+                print(json.dumps(output, indent=2))
             return
         else:
             print(
