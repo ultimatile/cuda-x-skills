@@ -164,12 +164,22 @@ def audit_pdf(lib):
     # HEAD request to avoid downloading the full PDF
     try:
         resp = requests.head(doc_url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+        content_type = resp.headers.get("Content-Type", "")
         ok = resp.status_code == 200
-        results["checks"].append({
-            "check": "doc_url",
-            "ok": ok,
-            "detail": f"{doc_url} -> {resp.status_code}, Content-Type: {resp.headers.get('Content-Type', 'unknown')}",
-        })
+        # Reject HTML responses — a PDF URL returning text/html is likely misconfigured
+        if ok and "text/html" in content_type:
+            ok = False
+            results["checks"].append({
+                "check": "doc_url",
+                "ok": False,
+                "detail": f"{doc_url} -> 200 but Content-Type is {content_type} (expected PDF, not HTML)",
+            })
+        else:
+            results["checks"].append({
+                "check": "doc_url",
+                "ok": ok,
+                "detail": f"{doc_url} -> {resp.status_code}, Content-Type: {content_type or 'unknown'}",
+            })
         if not ok:
             results["ok"] = False
     except Exception as e:
@@ -235,12 +245,19 @@ def print_table(results):
     print("-" * 72, file=sys.stderr)
     for r in results:
         status = "OK" if r["ok"] else "FAIL"
-        # Show first failing check as detail, or first check summary
         detail = ""
-        for c in r["checks"]:
-            if not c["ok"]:
-                detail = f"{c['check']}: {c['detail']}"
-                break
+        if r["ok"]:
+            # Show last successful check detail (the meaningful result)
+            for c in reversed(r["checks"]):
+                if c["ok"]:
+                    detail = c.get("detail", "")
+                    break
+        else:
+            # Show first failing check
+            for c in r["checks"]:
+                if not c["ok"]:
+                    detail = f"{c['check']}: {c['detail']}"
+                    break
         if not detail and r["checks"]:
             detail = r["checks"][-1].get("detail", "")
         # Truncate long details
