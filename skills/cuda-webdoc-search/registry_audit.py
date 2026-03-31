@@ -180,7 +180,7 @@ def audit_pdf(lib):
         content_type = resp.headers.get("Content-Type", "")
         ok = resp.status_code == 200
         # Reject HTML responses — a PDF URL returning text/html is likely misconfigured
-        if ok and "text/html" in content_type:
+        if ok and "text/html" in content_type.lower():
             ok = False
             results["checks"].append({
                 "check": "doc_url",
@@ -216,7 +216,7 @@ def audit_sphinx_noinv(lib):
     results["checks"].append({
         "check": "index_url",
         "ok": url_check["ok"],
-        "detail": f"{index_url} -> {url_check['status']}",
+        "detail": f"{index_url} -> {url_check.get('status') or url_check.get('error')}",
     })
     if not url_check["ok"]:
         results["ok"] = False
@@ -283,7 +283,7 @@ def main():
     parser = argparse.ArgumentParser(description="Audit registry entries for endpoint health.")
     parser.add_argument("--registry", default=DEFAULT_REGISTRY_PATH, help="Registry TOML path")
     parser.add_argument("--source", help="Audit only this source")
-    parser.add_argument("--json", action="store_true", help="Output JSON only (no table)")
+    parser.add_argument("--no-table", action="store_true", help="Suppress the human-readable table (JSON is always emitted to stdout)")
     args = parser.parse_args()
 
     registry = load_registry(args.registry)
@@ -300,7 +300,7 @@ def main():
         result = audit_library(lib)
         results.append(result)
 
-    if not args.json:
+    if not args.no_table:
         print_table(results)
 
     # JSON summary to stdout
