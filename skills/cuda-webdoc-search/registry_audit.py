@@ -23,8 +23,15 @@ REQUEST_TIMEOUT = 15
 
 
 def load_registry(path):
-    with open(path, "rb") as f:
-        return tomllib.load(f)
+    try:
+        with open(path, "rb") as f:
+            return tomllib.load(f)
+    except FileNotFoundError:
+        print(f"Error: registry file not found: {path}", file=sys.stderr)
+        sys.exit(1)
+    except tomllib.TOMLDecodeError as e:
+        print(f"Error: failed to parse registry file {path}: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 def check_url(url, timeout=REQUEST_TIMEOUT):
@@ -122,19 +129,25 @@ def audit_doxygen(lib):
         results["ok"] = False
         return results
 
-    url_check = check_url(index_url)
-    results["checks"].append({
-        "check": "index_url",
-        "ok": url_check["ok"],
-        "detail": f"{index_url} -> {url_check['status']}",
-    })
-    if not url_check["ok"]:
+    # Single fetch for both liveness check and link extraction
+    try:
+        resp = requests.get(index_url, timeout=REQUEST_TIMEOUT)
+    except Exception as e:
+        results["checks"].append({"check": "index_url", "ok": False, "detail": f"{index_url} -> {e}"})
         results["ok"] = False
         return results
 
-    # Check for group__ links
+    ok = resp.status_code == 200
+    results["checks"].append({
+        "check": "index_url",
+        "ok": ok,
+        "detail": f"{index_url} -> {resp.status_code}",
+    })
+    if not ok:
+        results["ok"] = False
+        return results
+
     try:
-        resp = requests.get(index_url, timeout=REQUEST_TIMEOUT)
         soup = BeautifulSoup(resp.content, "html.parser")
         group_links = [a for a in soup.find_all("a", href=True) if "group__" in a["href"]]
         results["checks"].append({
