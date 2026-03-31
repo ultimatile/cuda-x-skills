@@ -204,7 +204,7 @@ def audit_pdf(lib):
         if not ok:
             results["ok"] = False
     except Exception as e:
-        results["checks"].append({"check": "doc_url", "ok": False, "detail": str(e)})
+        results["checks"].append({"check": "doc_url", "ok": False, "detail": f"HEAD {doc_url} failed: {e}"})
         results["ok"] = False
 
     return results
