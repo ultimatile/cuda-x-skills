@@ -56,7 +56,7 @@ base_urls = ["https://docs.nvidia.com/cuda/cufft/"]
 name = "curand"
 description = "GPU-accelerated random number generation"
 doc_type = "doxygen"
-index_url = "https://docs.nvidia.com/cuda/curand/index.html"
+index_url = "https://docs.nvidia.com/cuda/curand/modules.html"
 base_urls = ["https://docs.nvidia.com/cuda/curand/"]
 
 [[library]]
@@ -133,9 +133,9 @@ repo = "https://github.com/NVIDIA/cutlass"
 [[library]]
 name = "nvshmem"
 description = "OpenSHMEM standard for GPU memory"
-doc_type = "doxygen"
-index_url = "https://docs.nvidia.com/nvshmem/api/index.html"
-base_urls = ["https://docs.nvidia.com/nvshmem/"]
+doc_type = "sphinx"
+inventory_urls = ["https://docs.nvidia.com/nvshmem/api/objects.inv"]
+base_urls = ["https://docs.nvidia.com/nvshmem/api/"]
 repo = "https://github.com/NVIDIA/nvshmem"
 
 [[library]]

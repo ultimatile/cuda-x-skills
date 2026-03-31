@@ -8,6 +8,7 @@
 # ]
 # ///
 
+import re
 import requests
 from bs4 import BeautifulSoup
 import json
@@ -146,29 +147,93 @@ def get_sphinx_groups(inv_url, source_name, domains=None):
         return []
 
 
-def get_all_groups(modules_url):
+def get_all_groups(modules_url, source_name="cuda_runtime"):
     soup = fetch_soup(modules_url, "Modules Index")
     if not soup:
         return []
 
     groups = []
-    seen_urls = set()
+    seen_pages = set()
     for a in soup.find_all("a", href=True):
         href = a["href"]
         if "group__" in href and "modules" not in href:
             full_url = urljoin(modules_url, href)
             page_url = full_url.split("#")[0]
 
-            if page_url in seen_urls:
+            if page_url in seen_pages:
                 continue
-            seen_urls.add(page_url)
+            seen_pages.add(page_url)
 
             group_name = a.get_text(strip=True)
 
             groups.append(
-                {"group": group_name, "url": page_url, "source": "cuda_runtime"}
+                {"group": group_name, "url": full_url, "source": source_name}
             )
     return groups
+
+
+# Matches Doxygen member anchors like #group__HOST_1g56ff... within group pages
+_DOXYGEN_MEMBER_RE = re.compile(r"^#(group__\w+_1\w+)")
+
+
+def _extract_member_name(a_tag):
+    """Extract a disambiguated member name from Doxygen HTML.
+
+    Doxygen member summary rows typically have structure:
+      <td class="memItemLeft">return_type</td>
+      <td class="memItemRight"><a href="...">name</a> (params)</td>
+    The parent <td> text includes the parameter list, which disambiguates
+    overloaded functions like curand(curandStateXORWOW_t*) vs curand(curandStateMtgp32_t*).
+    """
+    bare_name = a_tag.get_text(strip=True)
+
+    # Try parent <td> (summary table layout)
+    for tag_name in ("td", "dt"):
+        parent = a_tag.find_parent(tag_name)
+        if parent:
+            full_text = re.sub(r"\s+", " ", parent.get_text(" ", strip=True)).strip()
+            if full_text and full_text != bare_name:
+                return full_text
+
+    return bare_name
+
+
+def get_doxygen_members(group_urls, source_name):
+    """Discover function-level members from Doxygen group pages.
+
+    Fetches each group page and extracts same-page anchor links that point to
+    individual API function entries (Doxygen member anchors).
+    """
+    members = []
+    seen = set()
+    fetched_pages = set()
+    for group_url in group_urls:
+        page_url = group_url.split("#")[0]
+        if page_url in fetched_pages:
+            continue
+        fetched_pages.add(page_url)
+
+        soup = fetch_soup(page_url, "Doxygen group page")
+        if not soup:
+            continue
+
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            m = _DOXYGEN_MEMBER_RE.match(href)
+            if not m:
+                continue
+            full_url = page_url + href
+            if full_url in seen:
+                continue
+            seen.add(full_url)
+
+            name = _extract_member_name(a)
+            if not name:
+                continue
+            members.append(
+                {"group": name, "url": full_url, "source": source_name}
+            )
+    return members
 
 
 def filter_groups(groups, keywords, use_fuzzy=False, threshold=60.0):
@@ -339,6 +404,9 @@ def main():
         return
 
     # 1. Gather all candidates
+    # effective_source tracks the actual data source, which may differ from
+    # args.source when the registry-miss fallback silently switches to cuda_runtime.
+    effective_source = args.source
     if library:
         doc_type = library.get("doc_type")
         if doc_type == "sphinx":
@@ -352,7 +420,10 @@ def main():
                 all_groups = get_sphinx_groups(inv_url, args.source, domains_filter)
         elif doc_type == "doxygen":
             index_url = library.get("index_url", MODULES_URL)
-            all_groups = get_all_groups(index_url)
+            top_groups = get_all_groups(index_url, source_name=args.source)
+            group_urls = [g["url"] for g in top_groups]
+            members = get_doxygen_members(group_urls, source_name=args.source)
+            all_groups = top_groups + members
         else:
             print(
                 f"Error: unsupported doc_type '{doc_type}' for source '{args.source}'",
@@ -370,7 +441,11 @@ def main():
             else:
                 all_groups = get_sphinx_groups(inv_url, "cccl", domains_filter)
         else:
-            all_groups = get_all_groups(MODULES_URL)
+            effective_source = "cuda_runtime"
+            top_groups = get_all_groups(MODULES_URL, source_name=effective_source)
+            group_urls = [g["url"] for g in top_groups]
+            members = get_doxygen_members(group_urls, source_name=effective_source)
+            all_groups = top_groups + members
 
     # 2. Apply filter
     if args.keywords:
@@ -386,7 +461,7 @@ def main():
             print(f"{c['group']}\t{c['url']}")
     else:
         output = {
-            "source": args.source,
+            "source": effective_source,
             "total_found": len(all_groups),
             "filtered_count": len(candidates),
             "domains_filter": args.domains,
