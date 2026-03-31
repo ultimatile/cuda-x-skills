@@ -10,12 +10,10 @@ The file is a list of `[[library]]` tables.
 
 - `name` (string): Stable key used by CLI and code (e.g. `--source cccl`). Treat as immutable.
 - `doc_type` (string): Parser strategy. Allowed values:
-  - `sphinx` - Sphinx documentation with objects.inv
-  - `sphinx_noinv` - Sphinx documentation without objects.inv
-  - `doxygen` - Doxygen HTML with group__ pattern
-  - `mdbook` - mdBook documentation
-  - `pdf` - PDF documentation only (no web API docs)
-  - `custom` - Custom parser required
+  - `sphinx` - Sphinx documentation with objects.inv (symbol search supported)
+  - `doxygen` - Doxygen HTML with group__ pattern (symbol search supported)
+  - `sphinx_noinv` - Sphinx documentation without objects.inv (browse-only, no symbol search)
+  - `pdf` - PDF documentation only (browse-only, no symbol search)
 
 At least one of the following must be present (except for `pdf` type):
 - `inventory_urls` (array of string): Sphinx inventory endpoints (objects.inv).
