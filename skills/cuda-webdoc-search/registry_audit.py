@@ -72,7 +72,10 @@ def _try_inventory(url, results, label="inventory_url"):
         })
         return False
 
-    results["checks"].append({"check": label, "ok": True, "detail": url})
+    detail = url
+    if url_check.get("redirected_to"):
+        detail += f" (redirected to {url_check['redirected_to']})"
+    results["checks"].append({"check": label, "ok": True, "detail": detail})
     try:
         inv = soi.Inventory(url=url)
         domains = {}
@@ -138,10 +141,13 @@ def audit_doxygen(lib):
         return results
 
     ok = resp.status_code == 200
+    detail = f"{index_url} -> {resp.status_code}"
+    if resp.url != index_url:
+        detail += f" (redirected to {resp.url})"
     results["checks"].append({
         "check": "index_url",
         "ok": ok,
-        "detail": f"{index_url} -> {resp.status_code}",
+        "detail": detail,
     })
     if not ok:
         results["ok"] = False
@@ -182,16 +188,18 @@ def audit_pdf(lib):
         # Reject HTML responses — a PDF URL returning text/html is likely misconfigured
         if ok and "text/html" in content_type.lower():
             ok = False
+            redirect_note = f" (redirected to {resp.url})" if resp.url != doc_url else ""
             results["checks"].append({
                 "check": "doc_url",
                 "ok": False,
-                "detail": f"{doc_url} -> 200 but Content-Type is {content_type} (expected PDF, not HTML)",
+                "detail": f"{doc_url} -> 200 but Content-Type is {content_type} (expected PDF, not HTML){redirect_note}",
             })
         else:
+            redirect_note = f" (redirected to {resp.url})" if resp.url != doc_url else ""
             results["checks"].append({
                 "check": "doc_url",
                 "ok": ok,
-                "detail": f"{doc_url} -> {resp.status_code}, Content-Type: {content_type or 'unknown'}",
+                "detail": f"{doc_url} -> {resp.status_code}, Content-Type: {content_type or 'unknown'}{redirect_note}",
             })
         if not ok:
             results["ok"] = False
@@ -213,10 +221,13 @@ def audit_sphinx_noinv(lib):
         return results
 
     url_check = check_url(index_url)
+    detail = f"{index_url} -> {url_check.get('status') or url_check.get('error')}"
+    if url_check.get("redirected_to"):
+        detail += f" (redirected to {url_check['redirected_to']})"
     results["checks"].append({
         "check": "index_url",
         "ok": url_check["ok"],
-        "detail": f"{index_url} -> {url_check.get('status') or url_check.get('error')}",
+        "detail": detail,
     })
     if not url_check["ok"]:
         results["ok"] = False
