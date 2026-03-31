@@ -404,6 +404,9 @@ def main():
         return
 
     # 1. Gather all candidates
+    # effective_source tracks the actual data source, which may differ from
+    # args.source when the registry-miss fallback silently switches to cuda_runtime.
+    effective_source = args.source
     if library:
         doc_type = library.get("doc_type")
         if doc_type == "sphinx":
@@ -438,9 +441,10 @@ def main():
             else:
                 all_groups = get_sphinx_groups(inv_url, "cccl", domains_filter)
         else:
-            top_groups = get_all_groups(MODULES_URL, source_name="cuda_runtime")
+            effective_source = "cuda_runtime"
+            top_groups = get_all_groups(MODULES_URL, source_name=effective_source)
             group_urls = [g["url"] for g in top_groups]
-            members = get_doxygen_members(group_urls, source_name="cuda_runtime")
+            members = get_doxygen_members(group_urls, source_name=effective_source)
             all_groups = top_groups + members
 
     # 2. Apply filter
@@ -457,7 +461,7 @@ def main():
             print(f"{c['group']}\t{c['url']}")
     else:
         output = {
-            "source": args.source,
+            "source": effective_source,
             "total_found": len(all_groups),
             "filtered_count": len(candidates),
             "domains_filter": args.domains,
