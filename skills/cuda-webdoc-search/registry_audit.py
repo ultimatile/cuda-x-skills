@@ -50,74 +50,61 @@ def check_url(url, timeout=REQUEST_TIMEOUT):
         }
 
 
+def _try_inventory(url, results, label="inventory_url"):
+    """Try fetching and parsing a single inventory URL.
+
+    Returns True if the URL is reachable AND parseable with >0 objects.
+    Failed attempts are recorded in results but do not stop the search.
+    """
+    url_check = check_url(url)
+    if not url_check["ok"]:
+        results["checks"].append({
+            "check": label,
+            "ok": False,
+            "detail": f"{url} -> {url_check.get('status') or url_check.get('error')}",
+        })
+        return False
+
+    results["checks"].append({"check": label, "ok": True, "detail": url})
+    try:
+        inv = soi.Inventory(url=url)
+        domains = {}
+        for obj in inv.objects:
+            domains[obj.domain] = domains.get(obj.domain, 0) + 1
+        total = len(inv.objects)
+        results["checks"].append({
+            "check": "inventory_parse",
+            "ok": total > 0,
+            "detail": f"{total} objects, domains: {domains}",
+        })
+        return total > 0
+    except Exception as e:
+        results["checks"].append({"check": "inventory_parse", "ok": False, "detail": str(e)})
+        return False
+
+
 def audit_sphinx(lib):
     """Audit a sphinx library entry."""
     results = {"checks": [], "ok": True}
-    inv_urls = lib.get("inventory_urls", [])
 
-    if not inv_urls:
-        results["checks"].append({"check": "inventory_urls", "ok": False, "detail": "no inventory_urls defined"})
+    # Build candidate list: explicit inventory_urls, then base_urls-derived fallbacks
+    candidates = list(lib.get("inventory_urls", []))
+    for base_url in lib.get("base_urls", []):
+        fallback = base_url.rstrip("/") + "/objects.inv"
+        if fallback not in candidates:
+            candidates.append(fallback)
+
+    if not candidates:
+        results["checks"].append({"check": "inventory_urls", "ok": False, "detail": "no inventory_urls or base_urls defined"})
         results["ok"] = False
         return results
 
-    # Check inventory URL liveness and parseability
+    # Try each candidate until one is both reachable and parseable
     inv_found = False
-    for url in inv_urls:
-        url_check = check_url(url)
-        if url_check["ok"]:
+    for url in candidates:
+        if _try_inventory(url, results):
             inv_found = True
-            results["checks"].append({"check": f"inventory_url", "ok": True, "detail": url})
-
-            # Parse inventory and count domains
-            try:
-                inv = soi.Inventory(url=url)
-                domains = {}
-                for obj in inv.objects:
-                    domains[obj.domain] = domains.get(obj.domain, 0) + 1
-                total = len(inv.objects)
-                results["checks"].append({
-                    "check": "inventory_parse",
-                    "ok": total > 0,
-                    "detail": f"{total} objects, domains: {domains}",
-                })
-                if total == 0:
-                    results["ok"] = False
-            except Exception as e:
-                results["checks"].append({"check": "inventory_parse", "ok": False, "detail": str(e)})
-                results["ok"] = False
             break
-        else:
-            results["checks"].append({
-                "check": "inventory_url",
-                "ok": False,
-                "detail": f"{url} -> {url_check.get('status') or url_check.get('error')}",
-            })
-
-    # Fallback: try deriving objects.inv from base_urls
-    if not inv_found:
-        for base_url in lib.get("base_urls", []):
-            fallback = base_url.rstrip("/") + "/objects.inv"
-            url_check = check_url(fallback)
-            if url_check["ok"]:
-                inv_found = True
-                results["checks"].append({"check": "inventory_url (base_url fallback)", "ok": True, "detail": fallback})
-                try:
-                    inv = soi.Inventory(url=fallback)
-                    domains = {}
-                    for obj in inv.objects:
-                        domains[obj.domain] = domains.get(obj.domain, 0) + 1
-                    total = len(inv.objects)
-                    results["checks"].append({
-                        "check": "inventory_parse",
-                        "ok": total > 0,
-                        "detail": f"{total} objects, domains: {domains}",
-                    })
-                    if total == 0:
-                        results["ok"] = False
-                except Exception as e:
-                    results["checks"].append({"check": "inventory_parse", "ok": False, "detail": str(e)})
-                    results["ok"] = False
-                break
 
     if not inv_found:
         results["ok"] = False
