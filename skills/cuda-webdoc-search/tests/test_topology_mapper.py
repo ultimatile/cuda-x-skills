@@ -311,3 +311,89 @@ class TestGetGenindexEntries:
         monkeypatch.setattr(topology_mapper, "fetch_soup", lambda url, desc="": None)
         entries = get_genindex_entries("https://example.com/genindex.html", "cutensor")
         assert entries == []
+
+
+# -- --list TSV output format ------------------------------------------------
+
+
+SPHINX_GROUPS = [
+    {
+        "group": "cudaMemcpy",
+        "url": "https://example.com/memcpy",
+        "role": "function",
+        "domain": "cpp",
+        "source": "cccl",
+    },
+    {
+        "group": "cudaMalloc",
+        "url": "https://example.com/malloc",
+        "role": "function",
+        "domain": "cpp",
+        "source": "cccl",
+    },
+]
+
+DOXYGEN_GROUPS = [
+    {
+        "group": "curandGenerate",
+        "url": "https://example.com/curand",
+        "source": "curand",
+    },
+]
+
+
+class TestListTsvFormat:
+    """Test that --list emits TSV with metadata fields."""
+
+    def test_sphinx_fields(self):
+        """Sphinx entries include role, domain, source."""
+        from topology_mapper import filter_groups
+
+        candidates = filter_groups(SPHINX_GROUPS, ["Memcpy"])
+        assert len(candidates) == 1
+        c = candidates[0]
+        line = f"{c['group']}\t{c['url']}\t{c.get('role', '')}\t{c.get('domain', '')}\t{c.get('source', '')}"
+        fields = line.split("\t")
+        assert len(fields) == 5
+        assert fields[2] == "function"
+        assert fields[3] == "cpp"
+        assert fields[4] == "cccl"
+
+    def test_doxygen_empty_metadata(self):
+        """Doxygen entries have empty role/domain fields."""
+        c = DOXYGEN_GROUPS[0]
+        line = f"{c['group']}\t{c['url']}\t{c.get('role', '')}\t{c.get('domain', '')}\t{c.get('source', '')}"
+        fields = line.split("\t")
+        assert fields[2] == ""
+        assert fields[3] == ""
+        assert fields[4] == "curand"
+
+    def test_fuzzy_appends_score(self):
+        """Fuzzy matches append score and matched_keyword."""
+        from topology_mapper import filter_groups
+
+        candidates = filter_groups(
+            SPHINX_GROUPS, ["memcpy"], use_fuzzy=True, threshold=60.0
+        )
+        assert candidates
+        c = candidates[0]
+        line = f"{c['group']}\t{c['url']}\t{c.get('role', '')}\t{c.get('domain', '')}\t{c.get('source', '')}"
+        if "score" in c:
+            line += f"\t{c['score']}\t{c.get('matched_keyword', '')}"
+        fields = line.split("\t")
+        assert len(fields) == 7
+        assert float(fields[5]) > 0
+        assert fields[6] == "memcpy"
+
+    def test_nonfuzzy_no_score(self):
+        """Non-fuzzy results have exactly 5 fields (no score)."""
+        from topology_mapper import filter_groups
+
+        candidates = filter_groups(SPHINX_GROUPS, ["cudaMemcpy"])
+        assert candidates
+        c = candidates[0]
+        line = f"{c['group']}\t{c['url']}\t{c.get('role', '')}\t{c.get('domain', '')}\t{c.get('source', '')}"
+        if "score" in c:
+            line += f"\t{c['score']}\t{c.get('matched_keyword', '')}"
+        fields = line.split("\t")
+        assert len(fields) == 5

@@ -342,7 +342,7 @@ def main():
     parser.add_argument(
         "--list",
         action="store_true",
-        help="Output in line-oriented format (name\\turl) for fzf",
+        help="Output in TSV format (name\\turl\\trole\\tdomain\\tsource[\\tscore\\tmatched_keyword]) for fzf",
     )
     parser.add_argument(
         "--fuzzy", action="store_true", help="Use fuzzy matching (requires rapidfuzz)"
@@ -500,7 +500,13 @@ def main():
     # 3. Output results
     if args.list:
         for c in candidates:
-            print(f"{c['group']}\t{c['url']}")
+            role = c.get("role", "")
+            domain = c.get("domain", "")
+            source = c.get("source", "")
+            line = f"{c['group']}\t{c['url']}\t{role}\t{domain}\t{source}"
+            if "score" in c:
+                line += f"\t{c['score']}\t{c.get('matched_keyword', '')}"
+            print(line)
     else:
         output = {
             "source": args.source,
