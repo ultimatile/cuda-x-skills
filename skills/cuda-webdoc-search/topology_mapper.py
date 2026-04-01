@@ -278,8 +278,10 @@ def load_registry(path):
             return tomllib.load(f)
     except FileNotFoundError:
         return f"registry not found: {path}"
-    except Exception as e:
+    except tomllib.TOMLDecodeError as e:
         return f"failed to parse registry {path}: {e}"
+    except Exception as e:
+        return f"failed to read registry {path}: {e}"
 
 
 def get_library_config(registry, name):
