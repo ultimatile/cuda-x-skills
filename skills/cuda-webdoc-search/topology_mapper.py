@@ -149,9 +149,7 @@ def get_all_groups(modules_url, source_name="cuda_runtime"):
 
             group_name = a.get_text(strip=True)
 
-            groups.append(
-                {"group": group_name, "url": full_url, "source": source_name}
-            )
+            groups.append({"group": group_name, "url": full_url, "source": source_name})
     return groups
 
 
@@ -213,9 +211,7 @@ def get_doxygen_members(group_urls, source_name):
             name = _extract_member_name(a)
             if not name:
                 continue
-            members.append(
-                {"group": name, "url": full_url, "source": source_name}
-            )
+            members.append({"group": name, "url": full_url, "source": source_name})
     return members
 
 
@@ -264,7 +260,6 @@ def filter_groups(groups, keywords, use_fuzzy=False, threshold=60.0):
                     filtered.append(g)
 
     return filtered
-
 
 
 def get_library_config(registry, name):
@@ -366,7 +361,7 @@ def main():
             print(json.dumps(output, indent=2))
         else:
             print(
-                f"Error: --stats requires a sphinx source with valid inventory",
+                "Error: --stats requires a sphinx source with valid inventory",
                 file=sys.stderr,
             )
             sys.exit(1)

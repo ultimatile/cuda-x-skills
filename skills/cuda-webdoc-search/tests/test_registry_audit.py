@@ -1,11 +1,10 @@
 """Tests for registry_audit.py — audit dispatch and validation logic."""
 
-import pytest
-
 from registry_audit import audit_library, print_table
 
 
 # -- audit_library dispatch --------------------------------------------------
+
 
 class TestAuditLibrary:
     def test_unsupported_doc_type(self):
@@ -30,10 +29,12 @@ class TestAuditLibrary:
 
 # -- audit_* input validation (no network) -----------------------------------
 
+
 class TestAuditInputValidation:
     def test_sphinx_no_urls(self):
         """sphinx with no inventory_urls or base_urls should fail."""
         from registry_audit import audit_sphinx
+
         lib = {}
         result = audit_sphinx(lib)
         assert result["ok"] is False
@@ -42,6 +43,7 @@ class TestAuditInputValidation:
     def test_doxygen_no_index_url(self):
         """doxygen with no index_url should fail."""
         from registry_audit import audit_doxygen
+
         lib = {}
         result = audit_doxygen(lib)
         assert result["ok"] is False
@@ -50,6 +52,7 @@ class TestAuditInputValidation:
     def test_pdf_no_doc_url(self):
         """pdf with no doc_url should fail."""
         from registry_audit import audit_pdf
+
         lib = {}
         result = audit_pdf(lib)
         assert result["ok"] is False
@@ -58,6 +61,7 @@ class TestAuditInputValidation:
     def test_sphinx_noinv_no_index_url(self):
         """sphinx_noinv with no index_url should fail."""
         from registry_audit import audit_sphinx_noinv
+
         lib = {}
         result = audit_sphinx_noinv(lib)
         assert result["ok"] is False
@@ -66,30 +70,39 @@ class TestAuditInputValidation:
 
 # -- print_table formatting --------------------------------------------------
 
+
 class TestPrintTable:
     def test_ok_result(self, capsys):
-        results = [{
-            "name": "cublas",
-            "doc_type": "sphinx",
-            "ok": True,
-            "checks": [
-                {"check": "inventory_url", "ok": True, "detail": "https://example.com/objects.inv"},
-            ],
-        }]
+        results = [
+            {
+                "name": "cublas",
+                "doc_type": "sphinx",
+                "ok": True,
+                "checks": [
+                    {
+                        "check": "inventory_url",
+                        "ok": True,
+                        "detail": "https://example.com/objects.inv",
+                    },
+                ],
+            }
+        ]
         print_table(results)
         captured = capsys.readouterr()
         assert "cublas" in captured.err
         assert "OK" in captured.err
 
     def test_fail_result(self, capsys):
-        results = [{
-            "name": "badlib",
-            "doc_type": "sphinx",
-            "ok": False,
-            "checks": [
-                {"check": "inventory_url", "ok": False, "detail": "404 not found"},
-            ],
-        }]
+        results = [
+            {
+                "name": "badlib",
+                "doc_type": "sphinx",
+                "ok": False,
+                "checks": [
+                    {"check": "inventory_url", "ok": False, "detail": "404 not found"},
+                ],
+            }
+        ]
         print_table(results)
         captured = capsys.readouterr()
         assert "badlib" in captured.err
@@ -97,14 +110,16 @@ class TestPrintTable:
         assert "404" in captured.err
 
     def test_truncates_long_detail(self, capsys):
-        results = [{
-            "name": "lib",
-            "doc_type": "sphinx",
-            "ok": True,
-            "checks": [
-                {"check": "x", "ok": True, "detail": "a" * 100},
-            ],
-        }]
+        results = [
+            {
+                "name": "lib",
+                "doc_type": "sphinx",
+                "ok": True,
+                "checks": [
+                    {"check": "x", "ok": True, "detail": "a" * 100},
+                ],
+            }
+        ]
         print_table(results)
         captured = capsys.readouterr()
         assert "..." in captured.err

@@ -8,10 +8,22 @@ from topology_mapper import filter_groups, get_library_config, parse_domains
 # -- fixtures ----------------------------------------------------------------
 
 SAMPLE_GROUPS = [
-    {"group": "cudaMemcpy", "url": "https://example.com/memcpy", "source": "cuda_runtime"},
-    {"group": "cudaMalloc", "url": "https://example.com/malloc", "source": "cuda_runtime"},
+    {
+        "group": "cudaMemcpy",
+        "url": "https://example.com/memcpy",
+        "source": "cuda_runtime",
+    },
+    {
+        "group": "cudaMalloc",
+        "url": "https://example.com/malloc",
+        "source": "cuda_runtime",
+    },
     {"group": "cudaFree", "url": "https://example.com/free", "source": "cuda_runtime"},
-    {"group": "cudaStreamCreate", "url": "https://example.com/stream", "source": "cuda_runtime"},
+    {
+        "group": "cudaStreamCreate",
+        "url": "https://example.com/stream",
+        "source": "cuda_runtime",
+    },
 ]
 
 SAMPLE_REGISTRY = {
@@ -23,6 +35,7 @@ SAMPLE_REGISTRY = {
 
 
 # -- parse_domains -----------------------------------------------------------
+
 
 class TestParseDomains:
     def test_none_returns_none(self):
@@ -50,6 +63,7 @@ class TestParseDomains:
 
 # -- get_library_config ------------------------------------------------------
 
+
 class TestGetLibraryConfig:
     def test_found(self):
         lib = get_library_config(SAMPLE_REGISTRY, "cublas")
@@ -67,6 +81,7 @@ class TestGetLibraryConfig:
 
 
 # -- filter_groups (non-fuzzy) -----------------------------------------------
+
 
 class TestFilterGroupsNonFuzzy:
     def test_no_keywords_returns_all(self):
@@ -109,9 +124,12 @@ class TestFilterGroupsNonFuzzy:
 
 # -- filter_groups (fuzzy) ---------------------------------------------------
 
+
 class TestFilterGroupsFuzzy:
     def test_fuzzy_match(self):
-        result = filter_groups(SAMPLE_GROUPS, ["memcpy"], use_fuzzy=True, threshold=60.0)
+        result = filter_groups(
+            SAMPLE_GROUPS, ["memcpy"], use_fuzzy=True, threshold=60.0
+        )
         assert any(g["group"] == "cudaMemcpy" for g in result)
         assert all("score" in g for g in result)
         assert all("matched_keyword" in g for g in result)
@@ -127,13 +145,16 @@ class TestFilterGroupsFuzzy:
         assert len(result) == 0
 
     def test_fuzzy_deduplicates_by_url(self):
-        result = filter_groups(SAMPLE_GROUPS, ["cuda", "Mem"], use_fuzzy=True, threshold=50.0)
+        result = filter_groups(
+            SAMPLE_GROUPS, ["cuda", "Mem"], use_fuzzy=True, threshold=50.0
+        )
         assert result
         urls = [g["url"] for g in result]
         assert len(urls) == len(set(urls))
 
 
 # -- main() output branches for non-searchable sources ----------------------
+
 
 class TestNonSearchableOutput:
     """Test that main() handles --list / --keywords combinations for pdf/sphinx_noinv."""
@@ -149,9 +170,11 @@ class TestNonSearchableOutput:
         def _run(args):
             stdout = io.StringIO()
             stderr = io.StringIO()
-            with patch("sys.argv", ["topology_mapper.py"] + args), \
-                 patch("sys.stdout", stdout), \
-                 patch("sys.stderr", stderr):
+            with (
+                patch("sys.argv", ["topology_mapper.py"] + args),
+                patch("sys.stdout", stdout),
+                patch("sys.stderr", stderr),
+            ):
                 try:
                     main()
                 except SystemExit as e:
@@ -168,6 +191,7 @@ class TestNonSearchableOutput:
 
     def test_json_mode(self, run_mapper):
         import json
+
         out, _ = run_mapper(["--source", "amgx"])
         data = json.loads(out)
         assert data["doc_type"] == "pdf"
@@ -176,6 +200,7 @@ class TestNonSearchableOutput:
 
     def test_keywords_json_mode(self, run_mapper):
         import json
+
         out, _ = run_mapper(["--source", "amgx", "--keywords", "solver"])
         data = json.loads(out)
         assert data["doc_type"] == "pdf"

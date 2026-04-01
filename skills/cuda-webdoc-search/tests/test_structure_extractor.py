@@ -18,12 +18,15 @@ def _soup(html):
 
 # -- is_noise ----------------------------------------------------------------
 
+
 class TestIsNoise:
     @pytest.mark.parametrize("text", [None, "", "   ", "\t"])
     def test_empty_or_whitespace(self, text):
         assert is_noise(text) is True
 
-    @pytest.mark.parametrize("text", ["#", ",", ".", "(", ")", "[", "]", ";", ":", "*", "&", "–", "-"])
+    @pytest.mark.parametrize(
+        "text", ["#", ",", ".", "(", ")", "[", "]", ";", ":", "*", "&", "–", "-"]
+    )
     def test_single_punctuation(self, text):
         assert is_noise(text) is True
 
@@ -33,6 +36,7 @@ class TestIsNoise:
 
 
 # -- format_output -----------------------------------------------------------
+
 
 class TestFormatOutput:
     def test_collapses_spaces(self):
@@ -53,18 +57,23 @@ class TestFormatOutput:
 
 # -- html_to_brace_tree ------------------------------------------------------
 
+
 class TestHtmlToBraceTree:
     def test_plain_text(self):
         result = html_to_brace_tree(_soup("<p>Hello world</p>"))
         assert "Hello world" in result
 
     def test_skips_script(self):
-        result = html_to_brace_tree(_soup("<div><script>var x=1;</script><p>content</p></div>"))
+        result = html_to_brace_tree(
+            _soup("<div><script>var x=1;</script><p>content</p></div>")
+        )
         assert "var x" not in result
         assert "content" in result
 
     def test_skips_style(self):
-        result = html_to_brace_tree(_soup("<div><style>.x{}</style><p>content</p></div>"))
+        result = html_to_brace_tree(
+            _soup("<div><style>.x{}</style><p>content</p></div>")
+        )
         assert ".x{}" not in result
         assert "content" in result
 
@@ -105,6 +114,7 @@ class TestHtmlToBraceTree:
 
 # -- extract_section ---------------------------------------------------------
 
+
 class TestExtractSection:
     def test_by_id(self):
         html = '<div><section id="api-ref"><h2>API Reference</h2><p>Details</p></section></div>'
@@ -132,6 +142,7 @@ class TestExtractSection:
 
 
 # -- clean_soup --------------------------------------------------------------
+
 
 class TestCleanSoup:
     def test_removes_script_and_style(self):
