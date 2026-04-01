@@ -12,26 +12,14 @@
 import argparse
 import json
 import sys
-import tomllib
 
 import requests
 import sphobjinv as soi
 from bs4 import BeautifulSoup
 
-DEFAULT_REGISTRY_PATH = "registry.toml"
+from registry import DEFAULT_REGISTRY_PATH, load_registry
+
 REQUEST_TIMEOUT = 15
-
-
-def load_registry(path):
-    try:
-        with open(path, "rb") as f:
-            return tomllib.load(f)
-    except FileNotFoundError:
-        print(f"Error: registry file not found: {path}", file=sys.stderr)
-        sys.exit(1)
-    except tomllib.TOMLDecodeError as e:
-        print(f"Error: failed to parse registry file {path}: {e}", file=sys.stderr)
-        sys.exit(1)
 
 
 def check_url(url, timeout=REQUEST_TIMEOUT):
@@ -298,6 +286,9 @@ def main():
     args = parser.parse_args()
 
     registry = load_registry(args.registry)
+    if isinstance(registry, str):
+        print(f"Error: {registry}", file=sys.stderr)
+        sys.exit(1)
     libraries = registry.get("library", [])
 
     if args.source:

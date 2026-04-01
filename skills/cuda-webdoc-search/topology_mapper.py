@@ -15,16 +15,15 @@ import json
 import sys
 import argparse
 import os
-import tomllib
 from urllib.parse import urljoin
 from rapidfuzz import process, fuzz
 
 import sphobjinv as soi
 
+from registry import DEFAULT_REGISTRY_PATH, load_registry
+
 BASE_URL = "https://docs.nvidia.com/cuda/cuda-runtime-api/"
 MODULES_URL = urljoin(BASE_URL, "modules.html")
-_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_REGISTRY_PATH = os.path.join(_SCRIPT_DIR, "registry.toml")
 
 
 def probe_inventory_url(url, timeout=10):
@@ -266,22 +265,6 @@ def filter_groups(groups, keywords, use_fuzzy=False, threshold=60.0):
 
     return filtered
 
-
-def load_registry(path):
-    """Load registry TOML file.
-
-    Returns:
-        Parsed registry dict on success, or a string error message on failure.
-    """
-    try:
-        with open(path, "rb") as f:
-            return tomllib.load(f)
-    except FileNotFoundError:
-        return f"registry not found: {path}"
-    except tomllib.TOMLDecodeError as e:
-        return f"failed to parse registry {path}: {e}"
-    except Exception as e:
-        return f"failed to read registry {path}: {e}"
 
 
 def get_library_config(registry, name):
