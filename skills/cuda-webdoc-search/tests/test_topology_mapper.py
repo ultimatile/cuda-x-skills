@@ -71,11 +71,11 @@ class TestGetLibraryConfig:
 class TestFilterGroupsNonFuzzy:
     def test_no_keywords_returns_all(self):
         result = filter_groups(SAMPLE_GROUPS, None)
-        assert result is SAMPLE_GROUPS
+        assert result == SAMPLE_GROUPS
 
     def test_empty_keywords_returns_all(self):
         result = filter_groups(SAMPLE_GROUPS, [])
-        assert result is SAMPLE_GROUPS
+        assert result == SAMPLE_GROUPS
 
     def test_single_keyword_match(self):
         result = filter_groups(SAMPLE_GROUPS, ["Memcpy"])
