@@ -268,14 +268,18 @@ def filter_groups(groups, keywords, use_fuzzy=False, threshold=60.0):
 
 
 def load_registry(path):
+    """Load registry TOML file.
+
+    Returns:
+        Parsed registry dict on success, or a string error message on failure.
+    """
     try:
         with open(path, "rb") as f:
             return tomllib.load(f)
     except FileNotFoundError:
-        return None
+        return f"registry not found: {path}"
     except Exception as e:
-        print(f"Error reading registry {path}: {e}", file=sys.stderr)
-        return None
+        return f"failed to parse registry {path}: {e}"
 
 
 def get_library_config(registry, name):
@@ -342,11 +346,8 @@ def main():
     domains_filter = parse_domains(args.domains)
 
     registry = load_registry(args.registry)
-    if registry is None:
-        print(
-            f"Error: cannot load registry '{args.registry}'",
-            file=sys.stderr,
-        )
+    if isinstance(registry, str):
+        print(f"Error: {registry}", file=sys.stderr)
         sys.exit(1)
 
     library = get_library_config(registry, args.source)
