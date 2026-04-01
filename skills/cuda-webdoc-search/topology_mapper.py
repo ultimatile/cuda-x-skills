@@ -23,7 +23,8 @@ import sphobjinv as soi
 
 BASE_URL = "https://docs.nvidia.com/cuda/cuda-runtime-api/"
 MODULES_URL = urljoin(BASE_URL, "modules.html")
-DEFAULT_REGISTRY_PATH = "registry.toml"
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_REGISTRY_PATH = os.path.join(_SCRIPT_DIR, "registry.toml")
 
 
 def probe_inventory_url(url, timeout=10):
