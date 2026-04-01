@@ -118,6 +118,7 @@ class TestFilterGroupsFuzzy:
 
     def test_fuzzy_sorted_by_score(self):
         result = filter_groups(SAMPLE_GROUPS, ["mem"], use_fuzzy=True, threshold=50.0)
+        assert result
         scores = [g["score"] for g in result]
         assert scores == sorted(scores, reverse=True)
 
@@ -127,6 +128,7 @@ class TestFilterGroupsFuzzy:
 
     def test_fuzzy_deduplicates_by_url(self):
         result = filter_groups(SAMPLE_GROUPS, ["cuda", "Mem"], use_fuzzy=True, threshold=50.0)
+        assert result
         urls = [g["url"] for g in result]
         assert len(urls) == len(set(urls))
 
