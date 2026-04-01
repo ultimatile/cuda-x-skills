@@ -430,7 +430,9 @@ def main():
         # Try genindex.html as synthetic inventory fallback
         index_url = library.get("index_url", "")
         genindex_url = urljoin(index_url.rstrip("/") + "/", "genindex.html")
-        all_groups = get_genindex_entries(genindex_url, args.source, domains_filter)
+        # Fetch without domain filter first to distinguish "genindex unavailable"
+        # from "genindex exists but no entries match the requested domain"
+        all_groups = get_genindex_entries(genindex_url, args.source)
         if not all_groups:
             # genindex unavailable or empty — fall back to manual guidance
             doc_url = index_url
@@ -454,6 +456,9 @@ def main():
                 }
                 print(json.dumps(output, indent=2))
             return
+        # Apply domain filter after confirming genindex exists
+        if domains_filter is not None:
+            all_groups = [g for g in all_groups if g.get("domain") in domains_filter]
     elif doc_type == "pdf":
         doc_url = library.get("doc_url") or library.get("index_url", "")
         label = "PDF manual"
