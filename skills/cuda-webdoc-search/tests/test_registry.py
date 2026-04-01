@@ -1,6 +1,7 @@
 """Tests for registry.py — shared registry loading."""
 
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -41,6 +42,7 @@ class TestLoadRegistry:
         assert isinstance(result, str)
         assert "failed to read" in result
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX chmod semantics")
     def test_read_error_permission(self, tmp_path):
         no_read = tmp_path / "noperm.toml"
         no_read.write_bytes(b"")
