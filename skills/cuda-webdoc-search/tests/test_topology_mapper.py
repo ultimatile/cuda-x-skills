@@ -2,7 +2,12 @@
 
 import pytest
 
-from topology_mapper import filter_groups, get_library_config, parse_domains
+from topology_mapper import (
+    filter_groups,
+    get_genindex_entries,
+    get_library_config,
+    parse_domains,
+)
 
 
 # -- fixtures ----------------------------------------------------------------
@@ -211,3 +216,98 @@ class TestNonSearchableOutput:
         """Regression: --keywords --list previously produced no output."""
         out, _ = run_mapper(["--source", "amgx", "--keywords", "solver", "--list"])
         assert "[PDF manual]" in out
+
+
+# -- get_genindex_entries ----------------------------------------------------
+
+SAMPLE_GENINDEX_HTML = """\
+<html><body>
+<table class="indextable genindextable">
+<tr>
+<td><ul>
+<li><a href="api/cutensor.html#_CPPv414cutensorCreate">cutensorCreate (C++ function)</a></li>
+<li><a href="api/types.html#_CPPv416cutensorHandle_t">cutensorHandle_t (C++ type)</a></li>
+<li><a href="api/types.html#_CPPv414cutensorAlgo_t">cutensorAlgo_t (C++ enum)</a></li>
+</ul></td>
+<td><ul>
+<li><a href="api/types.html#_CPPv4N14cutensorAlgo_t21CUTENSOR_ALGO_DEFAULTE">cutensorAlgo_t::CUTENSOR_ALGO_DEFAULT (C++ enumerator)</a></li>
+<li><a href="api/types.html#_CPPv414cudaDataType_t">cudaDataType_t (C++ enum)</a></li>
+</ul></td>
+</tr>
+</table>
+</body></html>
+"""
+
+
+class TestGetGenindexEntries:
+    @pytest.fixture(autouse=True)
+    def mock_fetch(self, monkeypatch):
+        """Mock fetch_soup to return sample HTML without network access."""
+        from bs4 import BeautifulSoup
+
+        import topology_mapper
+
+        def _fake_fetch(url, description=""):
+            return BeautifulSoup(SAMPLE_GENINDEX_HTML, "html.parser")
+
+        monkeypatch.setattr(topology_mapper, "fetch_soup", _fake_fetch)
+
+    def test_parses_all_entries(self):
+        entries = get_genindex_entries("https://example.com/genindex.html", "cutensor")
+        assert len(entries) == 5
+
+    def test_entry_structure(self):
+        entries = get_genindex_entries("https://example.com/genindex.html", "cutensor")
+        func = next(e for e in entries if e["group"] == "cutensorCreate")
+        assert func["domain"] == "cpp"
+        assert func["role"] == "function"
+        assert func["source"] == "cutensor"
+        assert func["origin"] == "genindex"
+        assert "cutensor.html" in func["url"]
+
+    def test_all_roles_parsed(self):
+        entries = get_genindex_entries("https://example.com/genindex.html", "cutensor")
+        roles = {e["role"] for e in entries}
+        assert roles == {"function", "type", "enum", "enumerator"}
+
+    def test_domain_normalization(self):
+        entries = get_genindex_entries("https://example.com/genindex.html", "cutensor")
+        assert all(e["domain"] == "cpp" for e in entries)
+
+    def test_domains_filter(self):
+        entries = get_genindex_entries(
+            "https://example.com/genindex.html", "cutensor", domains={"c"}
+        )
+        assert len(entries) == 0
+
+    def test_domains_filter_match(self):
+        entries = get_genindex_entries(
+            "https://example.com/genindex.html", "cutensor", domains={"cpp"}
+        )
+        assert len(entries) == 5
+
+    def test_scoped_name(self):
+        entries = get_genindex_entries("https://example.com/genindex.html", "cutensor")
+        scoped = next(e for e in entries if "CUTENSOR_ALGO_DEFAULT" in e["group"])
+        assert scoped["group"] == "cutensorAlgo_t::CUTENSOR_ALGO_DEFAULT"
+        assert scoped["role"] == "enumerator"
+
+    def test_empty_page(self, monkeypatch):
+        from bs4 import BeautifulSoup
+
+        import topology_mapper
+
+        monkeypatch.setattr(
+            topology_mapper,
+            "fetch_soup",
+            lambda url, desc="": BeautifulSoup("<html></html>", "html.parser"),
+        )
+        entries = get_genindex_entries("https://example.com/genindex.html", "cutensor")
+        assert entries == []
+
+    def test_fetch_failure(self, monkeypatch):
+        import topology_mapper
+
+        monkeypatch.setattr(topology_mapper, "fetch_soup", lambda url, desc="": None)
+        entries = get_genindex_entries("https://example.com/genindex.html", "cutensor")
+        assert entries == []

@@ -12,7 +12,7 @@ The file is a list of `[[library]]` tables.
 - `doc_type` (string): Parser strategy. Allowed values:
   - `sphinx` - Sphinx documentation with objects.inv (symbol search supported)
   - `doxygen` - Doxygen HTML with group__ pattern (symbol search supported)
-  - `sphinx_noinv` - Sphinx documentation without objects.inv (browse-only, no symbol search)
+  - `sphinx_noinv` - Sphinx documentation without objects.inv (symbol search via genindex.html fallback; manual browse if genindex unavailable)
   - `pdf` - PDF documentation only (browse-only, no symbol search)
 
 At least one of the following must be present (except for `pdf` type):
