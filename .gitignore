@@ -9,6 +9,10 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
+.pytest_cache/
+uv.lock
+.coverage
 *.egg-info/
 dist/
 build/

@@ -18,3 +18,16 @@ When working with CUDA-X libraries (cuBLAS, cuTENSOR, cuTensorNet, cuSOLVER, etc
 # Symlink for development
 ./install-skills.sh --symlink --all
 ```
+
+## Testing
+
+```bash
+cd skills/cuda-webdoc-search
+uv run --group test pytest tests/ -v
+```
+
+With coverage:
+
+```bash
+uv run --group test pytest tests/ --cov=. --cov-report=term-missing
+```
