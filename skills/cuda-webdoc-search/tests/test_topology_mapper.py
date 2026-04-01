@@ -416,6 +416,11 @@ class TestListTsvOutput:
 
         monkeypatch.setattr(
             topology_mapper,
+            "resolve_inventory_url",
+            lambda *a, **kw: "https://example.com/objects.inv",
+        )
+        monkeypatch.setattr(
+            topology_mapper,
             "get_sphinx_groups",
             lambda *a, **kw: SPHINX_GROUPS,
         )
@@ -454,6 +459,11 @@ class TestListTsvOutput:
         """Fuzzy --list output appends score and matched_keyword."""
         import topology_mapper
 
+        monkeypatch.setattr(
+            topology_mapper,
+            "resolve_inventory_url",
+            lambda *a, **kw: "https://example.com/objects.inv",
+        )
         monkeypatch.setattr(
             topology_mapper,
             "get_sphinx_groups",
