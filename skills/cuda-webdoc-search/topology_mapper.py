@@ -418,20 +418,7 @@ def main():
                 f"'{args.source}' has no Sphinx inventory for symbol search. "
                 "Browse the documentation directly."
             )
-        if args.keywords:
-            if not args.list:
-                output = {
-                    "source": args.source,
-                    "total_found": 0,
-                    "filtered_count": 0,
-                    "domains_filter": args.domains,
-                    "candidates": [],
-                    "doc_type": doc_type,
-                    "doc_url": doc_url,
-                    "message": message,
-                }
-                print(json.dumps(output, indent=2))
-        elif args.list:
+        if args.list:
             print(f"[{label}]\t{doc_url}")
         else:
             output = {
