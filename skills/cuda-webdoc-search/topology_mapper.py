@@ -80,7 +80,7 @@ def get_inventory_stats(inv_url):
         dict with 'total' count and 'domains' mapping domain->count
     """
     try:
-        inv = soi.Inventory(url=inv_url)
+        inv = soi.Inventory(url=inv_url)  # type: ignore[call-arg]  # sphobjinv lacks type stubs
         domains = {}
         for obj in inv.objects:
             domains[obj.domain] = domains.get(obj.domain, 0) + 1
@@ -100,7 +100,7 @@ def get_sphinx_groups(inv_url, source_name, domains=None):
     """
     try:
         # Let sphobjinv handle fetching/parsing to avoid API incompatibilities
-        inv = soi.Inventory(url=inv_url)
+        inv = soi.Inventory(url=inv_url)  # type: ignore[call-arg]  # sphobjinv lacks type stubs
 
         groups = []
         for obj in inv.objects:
@@ -138,7 +138,7 @@ def get_all_groups(modules_url, source_name="cuda_runtime"):
     groups = []
     seen_pages = set()
     for a in soup.find_all("a", href=True):
-        href = a["href"]
+        href = str(a["href"])
         if "group__" in href and "modules" not in href:
             full_url = urljoin(modules_url, href)
             page_url = full_url.split("#")[0]
@@ -199,7 +199,7 @@ def get_doxygen_members(group_urls, source_name):
             continue
 
         for a in soup.find_all("a", href=True):
-            href = a["href"]
+            href = str(a["href"])
             m = _DOXYGEN_MEMBER_RE.match(href)
             if not m:
                 continue

@@ -67,6 +67,7 @@ class TestParseDomains:
 class TestGetLibraryConfig:
     def test_found(self):
         lib = get_library_config(SAMPLE_REGISTRY, "cublas")
+        assert lib is not None
         assert lib["name"] == "cublas"
         assert lib["doc_type"] == "sphinx"
 

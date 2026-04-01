@@ -6,6 +6,7 @@
 # ]
 # ///
 
+import re
 import requests
 from bs4 import BeautifulSoup, NavigableString
 import sys
@@ -25,9 +26,6 @@ def fetch_content(source):
         except Exception as e:
             print(f"Error fetching {source}: {e}", file=sys.stderr)
             return None
-
-
-import re
 
 
 def is_noise(text):

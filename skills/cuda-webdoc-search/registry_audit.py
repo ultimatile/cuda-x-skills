@@ -67,7 +67,7 @@ def _try_inventory(url, results, label="inventory_url"):
         detail += f" (redirected to {url_check['redirected_to']})"
     results["checks"].append({"check": label, "ok": True, "detail": detail})
     try:
-        inv = soi.Inventory(url=url)
+        inv = soi.Inventory(url=url)  # type: ignore[call-arg]  # sphobjinv lacks type stubs
         domains = {}
         for obj in inv.objects:
             domains[obj.domain] = domains.get(obj.domain, 0) + 1
