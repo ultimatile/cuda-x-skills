@@ -215,6 +215,49 @@ def get_doxygen_members(group_urls, source_name):
     return members
 
 
+# Matches genindex entry text like "cutensorCreate (C++ function)"
+_GENINDEX_ROLE_RE = re.compile(r"^(.+?)\s+\((\w+(?:\+\+)?)\s+(\w+)\)$")
+
+
+def get_genindex_entries(genindex_url, source_name, domains=None):
+    """Build a synthetic inventory from a Sphinx genindex.html page.
+
+    Parses entries like ``cutensorCreate (C++ function)`` into structured
+    dicts compatible with get_sphinx_groups() output format.
+    """
+    soup = fetch_soup(genindex_url, "genindex")
+    if not soup:
+        return []
+
+    entries = []
+    for table in soup.find_all("table", class_="indextable"):
+        for li in table.find_all("li"):
+            a = li.find("a", href=True)
+            if not a:
+                continue
+            text = a.get_text(strip=True)
+            m = _GENINDEX_ROLE_RE.match(text)
+            if not m:
+                continue
+            name, lang, role = m.group(1), m.group(2), m.group(3)
+            # Normalize language label to Sphinx domain name
+            domain = {"C++": "cpp", "C": "c", "Python": "py"}.get(lang, lang.lower())
+            if domains is not None and domain not in domains:
+                continue
+            full_url = urljoin(genindex_url, str(a["href"]))
+            entries.append(
+                {
+                    "group": name,
+                    "url": full_url,
+                    "role": role,
+                    "domain": domain,
+                    "source": source_name,
+                    "origin": "genindex",
+                }
+            )
+    return entries
+
+
 def filter_groups(groups, keywords, use_fuzzy=False, threshold=60.0):
     if not keywords:
         return groups
@@ -383,22 +426,42 @@ def main():
         group_urls = [g["url"] for g in top_groups]
         members = get_doxygen_members(group_urls, source_name=args.source)
         all_groups = top_groups + members
-    elif doc_type in ("pdf", "sphinx_noinv"):
-        # Non-searchable sources: return guidance instead of candidates
-        doc_url = library.get("doc_url") or library.get("index_url", "")
-        if doc_type == "pdf":
-            label = "PDF manual"
-            message = (
-                f"'{args.source}' is distributed as a PDF manual only. "
-                "Symbol search is not available. "
-                "Download the PDF to read the documentation."
-            )
-        else:
+    elif doc_type == "sphinx_noinv":
+        # Try genindex.html as synthetic inventory fallback
+        index_url = library.get("index_url", "")
+        genindex_url = urljoin(index_url.rstrip("/") + "/", "genindex.html")
+        all_groups = get_genindex_entries(genindex_url, args.source, domains_filter)
+        if not all_groups:
+            # genindex unavailable or empty — fall back to manual guidance
+            doc_url = index_url
             label = "docs (no inventory)"
             message = (
                 f"'{args.source}' has no Sphinx inventory for symbol search. "
                 "Browse the documentation directly."
             )
+            if args.list:
+                print(f"[{label}]\t{doc_url}")
+            else:
+                output = {
+                    "source": args.source,
+                    "total_found": 0,
+                    "filtered_count": 0,
+                    "domains_filter": args.domains,
+                    "candidates": [],
+                    "doc_type": doc_type,
+                    "doc_url": doc_url,
+                    "message": message,
+                }
+                print(json.dumps(output, indent=2))
+            return
+    elif doc_type == "pdf":
+        doc_url = library.get("doc_url") or library.get("index_url", "")
+        label = "PDF manual"
+        message = (
+            f"'{args.source}' is distributed as a PDF manual only. "
+            "Symbol search is not available. "
+            "Download the PDF to read the documentation."
+        )
         if args.list:
             print(f"[{label}]\t{doc_url}")
         else:
