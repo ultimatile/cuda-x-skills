@@ -258,6 +258,16 @@ def get_genindex_entries(genindex_url, source_name, domains=None):
     return entries
 
 
+def format_list_row(
+    name, url, role="", domain="", source="", score=None, matched_keyword=""
+):
+    """Format a single --list TSV row with consistent column layout."""
+    line = f"{name}\t{url}\t{role}\t{domain}\t{source}"
+    if score is not None:
+        line += f"\t{score}\t{matched_keyword}"
+    return line
+
+
 def filter_groups(groups, keywords, use_fuzzy=False, threshold=60.0):
     if not keywords:
         return groups
@@ -442,7 +452,7 @@ def main():
                 "Browse the documentation directly."
             )
             if args.list:
-                print(f"[{label}]\t{doc_url}\t\t\t{args.source}")
+                print(format_list_row(f"[{label}]", doc_url, source=args.source))
             else:
                 output = {
                     "source": args.source,
@@ -468,7 +478,7 @@ def main():
             "Download the PDF to read the documentation."
         )
         if args.list:
-            print(f"[{label}]\t{doc_url}\t\t\t{args.source}")
+            print(format_list_row(f"[{label}]", doc_url, source=args.source))
         else:
             output = {
                 "source": args.source,
@@ -500,13 +510,17 @@ def main():
     # 3. Output results
     if args.list:
         for c in candidates:
-            role = c.get("role", "")
-            domain = c.get("domain", "")
-            source = c.get("source", "")
-            line = f"{c['group']}\t{c['url']}\t{role}\t{domain}\t{source}"
-            if "score" in c:
-                line += f"\t{c['score']}\t{c.get('matched_keyword', '')}"
-            print(line)
+            print(
+                format_list_row(
+                    c["group"],
+                    c["url"],
+                    role=c.get("role", ""),
+                    domain=c.get("domain", ""),
+                    source=c.get("source", ""),
+                    score=c.get("score"),
+                    matched_keyword=c.get("matched_keyword", ""),
+                )
+            )
     else:
         output = {
             "source": args.source,

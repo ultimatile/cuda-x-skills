@@ -4,6 +4,7 @@ import pytest
 
 from topology_mapper import (
     filter_groups,
+    format_list_row,
     get_genindex_entries,
     get_library_config,
     parse_domains,
@@ -346,58 +347,122 @@ DOXYGEN_GROUPS = [
 ]
 
 
-class TestListTsvFormat:
-    """Test that --list emits TSV with metadata fields."""
+class TestFormatListRow:
+    """Test the format_list_row helper directly."""
 
-    def test_sphinx_fields(self):
-        """Sphinx entries include role, domain, source."""
-        from topology_mapper import filter_groups
+    def test_base_fields(self):
+        row = format_list_row("cudaMemcpy", "https://ex.com", "function", "cpp", "cccl")
+        fields = row.split("\t")
+        assert len(fields) == 5
+        assert fields == ["cudaMemcpy", "https://ex.com", "function", "cpp", "cccl"]
 
-        candidates = filter_groups(SPHINX_GROUPS, ["Memcpy"])
-        assert len(candidates) == 1
-        c = candidates[0]
-        line = f"{c['group']}\t{c['url']}\t{c.get('role', '')}\t{c.get('domain', '')}\t{c.get('source', '')}"
+    def test_empty_metadata(self):
+        row = format_list_row("curandGen", "https://ex.com", source="curand")
+        fields = row.split("\t")
+        assert len(fields) == 5
+        assert fields[2:4] == ["", ""]
+        assert fields[4] == "curand"
+
+    def test_with_score(self):
+        row = format_list_row(
+            "cudaMemcpy",
+            "https://ex.com",
+            "function",
+            "cpp",
+            "cccl",
+            score=85.0,
+            matched_keyword="memcpy",
+        )
+        fields = row.split("\t")
+        assert len(fields) == 7
+        assert fields[5] == "85.0"
+        assert fields[6] == "memcpy"
+
+    def test_score_none_omits_columns(self):
+        row = format_list_row("name", "url", score=None)
+        assert row.count("\t") == 4
+
+
+class TestListTsvOutput:
+    """Integration tests: --list output through main()."""
+
+    @pytest.fixture
+    def run_mapper(self):
+        import io
+        from unittest.mock import patch
+
+        from topology_mapper import main
+
+        def _run(args):
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with (
+                patch("sys.argv", ["topology_mapper.py"] + args),
+                patch("sys.stdout", stdout),
+                patch("sys.stderr", stderr),
+            ):
+                try:
+                    main()
+                except SystemExit as e:
+                    if e.code != 0:
+                        raise
+            return stdout.getvalue(), stderr.getvalue()
+
+        return _run
+
+    def test_sphinx_list_fields(self, run_mapper, monkeypatch):
+        """Sphinx --list output has 5 tab-separated fields."""
+        import topology_mapper
+
+        monkeypatch.setattr(
+            topology_mapper,
+            "get_sphinx_groups",
+            lambda *a, **kw: SPHINX_GROUPS,
+        )
+        out, _ = run_mapper(["--source", "cccl", "--keywords", "Memcpy", "--list"])
+        line = out.strip().splitlines()[0]
         fields = line.split("\t")
         assert len(fields) == 5
         assert fields[2] == "function"
         assert fields[3] == "cpp"
         assert fields[4] == "cccl"
 
-    def test_doxygen_empty_metadata(self):
-        """Doxygen entries have empty role/domain fields."""
-        c = DOXYGEN_GROUPS[0]
-        line = f"{c['group']}\t{c['url']}\t{c.get('role', '')}\t{c.get('domain', '')}\t{c.get('source', '')}"
+    def test_doxygen_list_empty_metadata(self, run_mapper, monkeypatch):
+        """Doxygen --list output has empty role/domain."""
+        import topology_mapper
+
+        monkeypatch.setattr(
+            topology_mapper,
+            "get_all_groups",
+            lambda *a, **kw: DOXYGEN_GROUPS,
+        )
+        monkeypatch.setattr(
+            topology_mapper,
+            "get_doxygen_members",
+            lambda *a, **kw: DOXYGEN_GROUPS,
+        )
+        out, _ = run_mapper(
+            ["--source", "cuda_runtime", "--keywords", "curand", "--list"]
+        )
+        line = out.strip().splitlines()[0]
         fields = line.split("\t")
+        assert len(fields) == 5
         assert fields[2] == ""
         assert fields[3] == ""
-        assert fields[4] == "curand"
 
-    def test_fuzzy_appends_score(self):
-        """Fuzzy matches append score and matched_keyword."""
-        from topology_mapper import filter_groups
+    def test_fuzzy_list_has_score(self, run_mapper, monkeypatch):
+        """Fuzzy --list output appends score and matched_keyword."""
+        import topology_mapper
 
-        candidates = filter_groups(
-            SPHINX_GROUPS, ["memcpy"], use_fuzzy=True, threshold=60.0
+        monkeypatch.setattr(
+            topology_mapper,
+            "get_sphinx_groups",
+            lambda *a, **kw: SPHINX_GROUPS,
         )
-        assert candidates
-        c = candidates[0]
-        line = f"{c['group']}\t{c['url']}\t{c.get('role', '')}\t{c.get('domain', '')}\t{c.get('source', '')}"
-        if "score" in c:
-            line += f"\t{c['score']}\t{c.get('matched_keyword', '')}"
+        out, _ = run_mapper(
+            ["--source", "cccl", "--keywords", "memcpy", "--fuzzy", "--list"]
+        )
+        line = out.strip().splitlines()[0]
         fields = line.split("\t")
         assert len(fields) == 7
         assert float(fields[5]) > 0
-        assert fields[6] == "memcpy"
-
-    def test_nonfuzzy_no_score(self):
-        """Non-fuzzy results have exactly 5 fields (no score)."""
-        from topology_mapper import filter_groups
-
-        candidates = filter_groups(SPHINX_GROUPS, ["cudaMemcpy"])
-        assert candidates
-        c = candidates[0]
-        line = f"{c['group']}\t{c['url']}\t{c.get('role', '')}\t{c.get('domain', '')}\t{c.get('source', '')}"
-        if "score" in c:
-            line += f"\t{c['score']}\t{c.get('matched_keyword', '')}"
-        fields = line.split("\t")
-        assert len(fields) == 5
