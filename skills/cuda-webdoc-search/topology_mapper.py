@@ -23,24 +23,8 @@ import sphobjinv as soi
 
 BASE_URL = "https://docs.nvidia.com/cuda/cuda-runtime-api/"
 MODULES_URL = urljoin(BASE_URL, "modules.html")
-DEFAULT_REGISTRY_PATH = "registry.toml"
-CCCL_INV_URL = "https://nvidia.github.io/cccl/libcudacxx/objects.inv"
-CCCL_INV_CANDIDATES = [
-    CCCL_INV_URL,
-    "https://nvidia.github.io/cccl/objects.inv",
-    "https://nvidia.github.io/libcudacxx/objects.inv",
-    "https://nvidia.github.io/libcudacxx/latest/objects.inv",
-    "https://nvidia.github.io/cccl/libcudacxx/latest/objects.inv",
-    "https://docs.nvidia.com/cccl/libcudacxx/objects.inv",
-    "https://docs.nvidia.com/cccl/objects.inv",
-]
-CCCL_BASE_URLS = [
-    "https://nvidia.github.io/cccl/libcudacxx/",
-    "https://nvidia.github.io/cccl/",
-    "https://nvidia.github.io/libcudacxx/",
-    "https://docs.nvidia.com/cccl/libcudacxx/",
-    "https://docs.nvidia.com/cccl/",
-]
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_REGISTRY_PATH = os.path.join(_SCRIPT_DIR, "registry.toml")
 
 
 def probe_inventory_url(url, timeout=10):
@@ -284,14 +268,20 @@ def filter_groups(groups, keywords, use_fuzzy=False, threshold=60.0):
 
 
 def load_registry(path):
+    """Load registry TOML file.
+
+    Returns:
+        Parsed registry dict on success, or a string error message on failure.
+    """
     try:
         with open(path, "rb") as f:
             return tomllib.load(f)
     except FileNotFoundError:
-        return None
+        return f"registry not found: {path}"
+    except tomllib.TOMLDecodeError as e:
+        return f"failed to parse registry {path}: {e}"
     except Exception as e:
-        print(f"Error reading registry {path}: {e}", file=sys.stderr)
-        return None
+        return f"failed to read registry {path}: {e}"
 
 
 def get_library_config(registry, name):
@@ -358,28 +348,24 @@ def main():
     domains_filter = parse_domains(args.domains)
 
     registry = load_registry(args.registry)
-    library = get_library_config(registry, args.source) if registry else None
+    if isinstance(registry, str):
+        print(f"Error: {registry}", file=sys.stderr)
+        sys.exit(1)
 
-    if registry and not library:
+    library = get_library_config(registry, args.source)
+    if not library:
         print(f"Error: source '{args.source}' not found in registry", file=sys.stderr)
         sys.exit(1)
 
     # Resolve inventory URL for sphinx sources
     inv_url = None
-    if library:
-        doc_type = library.get("doc_type")
-        if doc_type == "sphinx":
-            inventory_urls = library.get("inventory_urls", [])
-            base_urls = library.get("base_urls", [])
-            env_override = os.getenv("CCCL_INV_URL") if args.source == "cccl" else None
-            inv_url = resolve_inventory_url(
-                inventory_urls, base_urls, env_override=env_override
-            )
-    elif args.source == "cccl":
+    doc_type = library.get("doc_type")
+    if doc_type == "sphinx":
+        inventory_urls = library.get("inventory_urls", [])
+        base_urls = library.get("base_urls", [])
+        env_override = os.getenv("CCCL_INV_URL") if args.source == "cccl" else None
         inv_url = resolve_inventory_url(
-            CCCL_INV_CANDIDATES,
-            CCCL_BASE_URLS,
-            env_override=os.getenv("CCCL_INV_URL"),
+            inventory_urls, base_urls, env_override=env_override
         )
 
     # Handle --stats option
@@ -404,92 +390,58 @@ def main():
         return
 
     # 1. Gather all candidates
-    # effective_source tracks the actual data source, which may differ from
-    # args.source when the registry-miss fallback silently switches to cuda_runtime.
-    effective_source = args.source
-    if library:
-        doc_type = library.get("doc_type")
-        if doc_type == "sphinx":
-            if not inv_url:
-                print(
-                    "Error fetching/parsing Sphinx inventory: no valid objects.inv found",
-                    file=sys.stderr,
-                )
-                all_groups = []
-            else:
-                all_groups = get_sphinx_groups(inv_url, args.source, domains_filter)
-        elif doc_type == "doxygen":
-            index_url = library.get("index_url", MODULES_URL)
-            top_groups = get_all_groups(index_url, source_name=args.source)
-            group_urls = [g["url"] for g in top_groups]
-            members = get_doxygen_members(group_urls, source_name=args.source)
-            all_groups = top_groups + members
-        elif doc_type in ("pdf", "sphinx_noinv"):
-            # Non-searchable sources: return guidance instead of candidates
-            doc_url = library.get("doc_url") or library.get("index_url", "")
-            if doc_type == "pdf":
-                label = "PDF manual"
-                message = (
-                    f"'{args.source}' is distributed as a PDF manual only. "
-                    "Symbol search is not available. "
-                    "Download the PDF to read the documentation."
-                )
-            else:
-                label = "docs (no inventory)"
-                message = (
-                    f"'{args.source}' has no Sphinx inventory for symbol search. "
-                    "Browse the documentation directly."
-                )
-            if args.keywords:
-                if not args.list:
-                    output = {
-                        "source": effective_source,
-                        "total_found": 0,
-                        "filtered_count": 0,
-                        "domains_filter": args.domains,
-                        "candidates": [],
-                        "doc_type": doc_type,
-                        "doc_url": doc_url,
-                        "message": message,
-                    }
-                    print(json.dumps(output, indent=2))
-            elif args.list:
-                print(f"[{label}]\t{doc_url}")
-            else:
-                output = {
-                    "source": effective_source,
-                    "total_found": 0,
-                    "filtered_count": 0,
-                    "domains_filter": args.domains,
-                    "candidates": [],
-                    "doc_type": doc_type,
-                    "doc_url": doc_url,
-                    "message": message,
-                }
-                print(json.dumps(output, indent=2))
-            return
-        else:
+    if doc_type == "sphinx":
+        if not inv_url:
             print(
-                f"Error: unsupported doc_type '{doc_type}' for source '{args.source}'",
+                "Error fetching/parsing Sphinx inventory: no valid objects.inv found",
                 file=sys.stderr,
             )
-            sys.exit(1)
-    else:
-        if args.source == "cccl":
-            if not inv_url:
-                print(
-                    "Error fetching/parsing Sphinx inventory: no valid objects.inv found",
-                    file=sys.stderr,
-                )
-                all_groups = []
-            else:
-                all_groups = get_sphinx_groups(inv_url, "cccl", domains_filter)
+            all_groups = []
         else:
-            effective_source = "cuda_runtime"
-            top_groups = get_all_groups(MODULES_URL, source_name=effective_source)
-            group_urls = [g["url"] for g in top_groups]
-            members = get_doxygen_members(group_urls, source_name=effective_source)
-            all_groups = top_groups + members
+            all_groups = get_sphinx_groups(inv_url, args.source, domains_filter)
+    elif doc_type == "doxygen":
+        index_url = library.get("index_url", MODULES_URL)
+        top_groups = get_all_groups(index_url, source_name=args.source)
+        group_urls = [g["url"] for g in top_groups]
+        members = get_doxygen_members(group_urls, source_name=args.source)
+        all_groups = top_groups + members
+    elif doc_type in ("pdf", "sphinx_noinv"):
+        # Non-searchable sources: return guidance instead of candidates
+        doc_url = library.get("doc_url") or library.get("index_url", "")
+        if doc_type == "pdf":
+            label = "PDF manual"
+            message = (
+                f"'{args.source}' is distributed as a PDF manual only. "
+                "Symbol search is not available. "
+                "Download the PDF to read the documentation."
+            )
+        else:
+            label = "docs (no inventory)"
+            message = (
+                f"'{args.source}' has no Sphinx inventory for symbol search. "
+                "Browse the documentation directly."
+            )
+        if args.list:
+            print(f"[{label}]\t{doc_url}")
+        else:
+            output = {
+                "source": args.source,
+                "total_found": 0,
+                "filtered_count": 0,
+                "domains_filter": args.domains,
+                "candidates": [],
+                "doc_type": doc_type,
+                "doc_url": doc_url,
+                "message": message,
+            }
+            print(json.dumps(output, indent=2))
+        return
+    else:
+        print(
+            f"Error: unsupported doc_type '{doc_type}' for source '{args.source}'",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     # 2. Apply filter
     if args.keywords:
@@ -505,7 +457,7 @@ def main():
             print(f"{c['group']}\t{c['url']}")
     else:
         output = {
-            "source": effective_source,
+            "source": args.source,
             "total_found": len(all_groups),
             "filtered_count": len(candidates),
             "domains_filter": args.domains,
