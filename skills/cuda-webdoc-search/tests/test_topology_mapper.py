@@ -194,6 +194,10 @@ class TestNonSearchableOutput:
         out, _ = run_mapper(["--source", "amgx", "--list"])
         assert "[PDF manual]" in out
         assert "AMGX" in out
+        # Fallback rows use same 5-column TSV as normal candidates
+        fields = out.strip().split("\t")
+        assert len(fields) == 5
+        assert fields[4] == "amgx"
 
     def test_json_mode(self, run_mapper):
         import json

@@ -442,7 +442,7 @@ def main():
                 "Browse the documentation directly."
             )
             if args.list:
-                print(f"[{label}]\t{doc_url}")
+                print(f"[{label}]\t{doc_url}\t\t\t{args.source}")
             else:
                 output = {
                     "source": args.source,
@@ -468,7 +468,7 @@ def main():
             "Download the PDF to read the documentation."
         )
         if args.list:
-            print(f"[{label}]\t{doc_url}")
+            print(f"[{label}]\t{doc_url}\t\t\t{args.source}")
         else:
             output = {
                 "source": args.source,
