@@ -156,6 +156,15 @@ def get_all_groups(modules_url, source_name="cuda_runtime"):
 # Matches Doxygen member anchors like #group__HOST_1g56ff... within group pages
 _DOXYGEN_MEMBER_RE = re.compile(r"^#(group__\w+_1\w+)")
 
+# Map Doxygen section headings to Sphinx-compatible role names
+_DOXYGEN_SECTION_ROLE = {
+    "functions": "function",
+    "typedefs": "type",
+    "enumerations": "enum",
+    "defines": "macro",
+    "variables": "data",
+}
+
 
 def _extract_member_name(a_tag):
     """Extract a disambiguated member name from Doxygen HTML.
@@ -179,12 +188,32 @@ def _extract_member_name(a_tag):
     return bare_name
 
 
-def get_doxygen_members(group_urls, source_name):
-    """Discover function-level members from Doxygen group pages.
+def _get_section_role(tag):
+    """Find the nearest preceding Doxygen section heading and return its role."""
+    heading = tag.find_previous("h3", class_="member_header")
+    if heading is None:
+        return ""
+    return _DOXYGEN_SECTION_ROLE.get(heading.get_text(strip=True).lower(), "")
+
+
+def _resolve_doxygen_domain(page_url, library):
+    """Determine domain for a Doxygen group page using registry config."""
+    default_domain = library.get("default_domain", "")
+    for pattern in library.get("cpp_groups", []):
+        if pattern in page_url:
+            return "cpp"
+    return default_domain
+
+
+def get_doxygen_members(group_urls, source_name, library=None):
+    """Discover member-level entries from Doxygen group pages.
 
     Fetches each group page and extracts same-page anchor links that point to
-    individual API function entries (Doxygen member anchors).
+    individual Doxygen member anchors (functions, typedefs, enums, defines,
+    variables). Returns entries with inferred role and domain metadata.
     """
+    if library is None:
+        library = {}
     members = []
     seen = set()
     fetched_pages = set()
@@ -197,6 +226,8 @@ def get_doxygen_members(group_urls, source_name):
         soup = fetch_soup(page_url, "Doxygen group page")
         if not soup:
             continue
+
+        domain = _resolve_doxygen_domain(page_url, library)
 
         for a in soup.find_all("a", href=True):
             href = str(a["href"])
@@ -211,7 +242,16 @@ def get_doxygen_members(group_urls, source_name):
             name = _extract_member_name(a)
             if not name:
                 continue
-            members.append({"group": name, "url": full_url, "source": source_name})
+            role = _get_section_role(a)
+            members.append(
+                {
+                    "group": name,
+                    "url": full_url,
+                    "role": role,
+                    "domain": domain,
+                    "source": source_name,
+                }
+            )
     return members
 
 
@@ -448,7 +488,11 @@ def main():
         index_url = library.get("index_url", MODULES_URL)
         top_groups = get_all_groups(index_url, source_name=args.source)
         group_urls = [g["url"] for g in top_groups]
-        members = get_doxygen_members(group_urls, source_name=args.source)
+        members = get_doxygen_members(
+            group_urls, source_name=args.source, library=library
+        )
+        if domains_filter is not None:
+            members = [m for m in members if m.get("domain") in domains_filter]
         all_groups = top_groups + members
     elif doc_type == "sphinx_noinv":
         # Try genindex.html as synthetic inventory fallback

@@ -5,6 +5,7 @@ import pytest
 from topology_mapper import (
     filter_groups,
     format_list_row,
+    get_doxygen_members,
     get_genindex_entries,
     get_library_config,
     parse_domains,
@@ -343,6 +344,166 @@ class TestGetGenindexEntries:
         assert entries == []
 
 
+# -- get_doxygen_members -----------------------------------------------------
+
+SAMPLE_DOXYGEN_HTML = """\
+<html><body>
+<h3 class="fake_sectiontitle member_header">Functions</h3>
+<dl class="members">
+  <dt>
+    <span class="member_name">
+      <a href="#group__CUDART__MEMORY_1g001">cudaFree</a> ( void* devPtr )
+    </span>
+  </dt>
+</dl>
+<h3 class="fake_sectiontitle member_header">Typedefs</h3>
+<dl class="members">
+  <dt>
+    <span class="member_name">
+      <a href="#group__CUDART__TYPES_1g002">cudaArray_t</a>
+    </span>
+  </dt>
+</dl>
+<h3 class="fake_sectiontitle member_header">Enumerations</h3>
+<dl class="members">
+  <dt>
+    <span class="member_name">
+      <a href="#group__CUDART__TYPES_1g003">cudaError</a>
+    </span>
+  </dt>
+</dl>
+<h3 class="fake_sectiontitle member_header">Defines</h3>
+<dl class="members">
+  <dt>
+    <span class="member_name">
+      <a href="#group__CUDART__DEFINES_1g004">CUDA_VERSION</a>
+    </span>
+  </dt>
+</dl>
+<h3 class="fake_sectiontitle member_header">Variables</h3>
+<dl class="members">
+  <dt>
+    <span class="member_name">
+      <a href="#group__CUDART__VARS_1g005">cudaDefaultStream</a>
+    </span>
+  </dt>
+</dl>
+</body></html>
+"""
+
+
+SAMPLE_DOXYGEN_LIBRARY = {
+    "default_domain": "c",
+    "cpp_groups": ["HIGHLEVEL"],
+}
+
+
+class TestGetDoxygenMembers:
+    @pytest.fixture(autouse=True)
+    def mock_fetch(self, monkeypatch):
+        from bs4 import BeautifulSoup
+
+        import topology_mapper
+
+        def _fake_fetch(url, description=""):
+            return BeautifulSoup(SAMPLE_DOXYGEN_HTML, "html.parser")
+
+        monkeypatch.setattr(topology_mapper, "fetch_soup", _fake_fetch)
+
+    def test_extracts_all_members(self):
+        members = get_doxygen_members(
+            ["https://example.com/group__CUDART__MEMORY.html"],
+            "cuda_runtime",
+            library=SAMPLE_DOXYGEN_LIBRARY,
+        )
+        assert len(members) == 5
+
+    def test_function_role(self):
+        members = get_doxygen_members(
+            ["https://example.com/group__CUDART__MEMORY.html"],
+            "cuda_runtime",
+            library=SAMPLE_DOXYGEN_LIBRARY,
+        )
+        func = next(m for m in members if "cudaFree" in m["group"])
+        assert func["role"] == "function"
+        assert func["domain"] == "c"
+        assert func["source"] == "cuda_runtime"
+
+    def test_typedef_role(self):
+        members = get_doxygen_members(
+            ["https://example.com/group__CUDART__MEMORY.html"],
+            "cuda_runtime",
+            library=SAMPLE_DOXYGEN_LIBRARY,
+        )
+        td = next(m for m in members if "cudaArray_t" in m["group"])
+        assert td["role"] == "type"
+        assert td["domain"] == "c"
+
+    def test_enum_role(self):
+        members = get_doxygen_members(
+            ["https://example.com/group__CUDART__MEMORY.html"],
+            "cuda_runtime",
+            library=SAMPLE_DOXYGEN_LIBRARY,
+        )
+        en = next(m for m in members if "cudaError" in m["group"])
+        assert en["role"] == "enum"
+        assert en["domain"] == "c"
+
+    def test_define_role(self):
+        members = get_doxygen_members(
+            ["https://example.com/group__CUDART__MEMORY.html"],
+            "cuda_runtime",
+            library=SAMPLE_DOXYGEN_LIBRARY,
+        )
+        d = next(m for m in members if "CUDA_VERSION" in m["group"])
+        assert d["role"] == "macro"
+
+    def test_variable_role(self):
+        members = get_doxygen_members(
+            ["https://example.com/group__CUDART__MEMORY.html"],
+            "cuda_runtime",
+            library=SAMPLE_DOXYGEN_LIBRARY,
+        )
+        v = next(m for m in members if "cudaDefaultStream" in m["group"])
+        assert v["role"] == "data"
+
+    def test_cpp_group_domain(self):
+        """cpp_groups pattern in URL overrides default_domain."""
+        members = get_doxygen_members(
+            ["https://example.com/group__CUDART__HIGHLEVEL.html"],
+            "cuda_runtime",
+            library=SAMPLE_DOXYGEN_LIBRARY,
+        )
+        assert all(m["domain"] == "cpp" for m in members)
+
+    def test_no_library_defaults_empty_domain(self):
+        """Without library config, domain falls back to empty string."""
+        members = get_doxygen_members(
+            ["https://example.com/group__CUDART__MEMORY.html"], "cuda_runtime"
+        )
+        assert all(m["domain"] == "" for m in members)
+
+    def test_deduplicates_by_url(self):
+        members = get_doxygen_members(
+            [
+                "https://example.com/group__CUDART__MEMORY.html",
+                "https://example.com/group__CUDART__MEMORY.html",
+            ],
+            "cuda_runtime",
+            library=SAMPLE_DOXYGEN_LIBRARY,
+        )
+        assert len(members) == 5
+
+    def test_fetch_failure(self, monkeypatch):
+        import topology_mapper
+
+        monkeypatch.setattr(topology_mapper, "fetch_soup", lambda url, desc="": None)
+        members = get_doxygen_members(
+            ["https://example.com/group__X.html"], "cuda_runtime"
+        )
+        assert members == []
+
+
 # -- --list TSV output format ------------------------------------------------
 
 
@@ -367,6 +528,8 @@ DOXYGEN_GROUPS = [
     {
         "group": "curandGenerate",
         "url": "https://example.com/curand",
+        "role": "function",
+        "domain": "c",
         "source": "curand",
     },
 ]
@@ -457,14 +620,14 @@ class TestListTsvOutput:
         assert fields[3] == "cpp"
         assert fields[4] == "cccl"
 
-    def test_doxygen_list_empty_metadata(self, run_mapper, monkeypatch):
-        """Doxygen --list output has empty role/domain."""
+    def test_doxygen_list_metadata(self, run_mapper, monkeypatch):
+        """Doxygen --list output includes role/domain from member extraction."""
         import topology_mapper
 
         monkeypatch.setattr(
             topology_mapper,
             "get_all_groups",
-            lambda *a, **kw: DOXYGEN_GROUPS,
+            lambda *a, **kw: [],
         )
         monkeypatch.setattr(
             topology_mapper,
@@ -477,8 +640,9 @@ class TestListTsvOutput:
         line = out.strip().splitlines()[0]
         fields = line.split("\t")
         assert len(fields) == 5
-        assert fields[2] == ""
-        assert fields[3] == ""
+        assert fields[2] == "function"
+        assert fields[3] == "c"
+        assert fields[4] == "curand"
 
     def test_fuzzy_list_has_score(self, run_mapper, monkeypatch):
         """Fuzzy --list output appends score and matched_keyword."""
