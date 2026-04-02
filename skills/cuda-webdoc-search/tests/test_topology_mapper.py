@@ -408,7 +408,7 @@ class TestGetDoxygenMembers:
             ["https://example.com/group__CUDART__MEMORY.html"], "cuda_runtime"
         )
         td = next(m for m in members if "cudaArray_t" in m["group"])
-        assert td["role"] == "typedef"
+        assert td["role"] == "type"
         assert td["domain"] == "c"
 
     def test_enum_role(self):

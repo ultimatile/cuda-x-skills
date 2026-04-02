@@ -159,10 +159,10 @@ _DOXYGEN_MEMBER_RE = re.compile(r"^#(group__\w+_1\w+)")
 # Map Doxygen section headings to Sphinx-compatible role names
 _DOXYGEN_SECTION_ROLE = {
     "functions": "function",
-    "typedefs": "typedef",
+    "typedefs": "type",
     "enumerations": "enum",
-    "defines": "define",
-    "variables": "variable",
+    "defines": "macro",
+    "variables": "data",
 }
 
 
@@ -189,17 +189,11 @@ def _extract_member_name(a_tag):
 
 
 def _get_section_role(tag):
-    """Walk up from a tag to find the nearest Doxygen section heading role."""
-    # Walk preceding siblings and parents to find h3.member_header
-    for parent in tag.parents:
-        for prev in parent.find_all_previous("h3", class_="member_header"):
-            heading = prev.get_text(strip=True).lower()
-            role = _DOXYGEN_SECTION_ROLE.get(heading)
-            if role is not None:
-                return role
-            break  # Only check the nearest heading
-        break  # Only check the nearest parent level
-    return ""
+    """Find the nearest preceding Doxygen section heading and return its role."""
+    heading = tag.find_previous("h3", class_="member_header")
+    if heading is None:
+        return ""
+    return _DOXYGEN_SECTION_ROLE.get(heading.get_text(strip=True).lower(), "")
 
 
 def get_doxygen_members(group_urls, source_name):
