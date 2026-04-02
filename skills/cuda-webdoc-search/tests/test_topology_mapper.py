@@ -5,6 +5,7 @@ import pytest
 from topology_mapper import (
     filter_groups,
     format_list_row,
+    get_doxygen_members,
     get_genindex_entries,
     get_library_config,
     parse_domains,
@@ -341,6 +342,101 @@ class TestGetGenindexEntries:
         monkeypatch.setattr(topology_mapper, "fetch_soup", lambda url, desc="": None)
         entries = get_genindex_entries("https://example.com/genindex.html", "cutensor")
         assert entries == []
+
+
+# -- get_doxygen_members -----------------------------------------------------
+
+SAMPLE_DOXYGEN_HTML = """\
+<html><body>
+<h3 class="fake_sectiontitle member_header">Functions</h3>
+<dl class="members">
+  <dt>
+    <span class="member_name">
+      <a href="#group__CUDART__MEMORY_1g001">cudaFree</a> ( void* devPtr )
+    </span>
+  </dt>
+</dl>
+<h3 class="fake_sectiontitle member_header">Typedefs</h3>
+<dl class="members">
+  <dt>
+    <span class="member_name">
+      <a href="#group__CUDART__TYPES_1g002">cudaArray_t</a>
+    </span>
+  </dt>
+</dl>
+<h3 class="fake_sectiontitle member_header">Enumerations</h3>
+<dl class="members">
+  <dt>
+    <span class="member_name">
+      <a href="#group__CUDART__TYPES_1g003">cudaError</a>
+    </span>
+  </dt>
+</dl>
+</body></html>
+"""
+
+
+class TestGetDoxygenMembers:
+    @pytest.fixture(autouse=True)
+    def mock_fetch(self, monkeypatch):
+        from bs4 import BeautifulSoup
+
+        import topology_mapper
+
+        def _fake_fetch(url, description=""):
+            return BeautifulSoup(SAMPLE_DOXYGEN_HTML, "html.parser")
+
+        monkeypatch.setattr(topology_mapper, "fetch_soup", _fake_fetch)
+
+    def test_extracts_all_members(self):
+        members = get_doxygen_members(
+            ["https://example.com/group__CUDART__MEMORY.html"], "cuda_runtime"
+        )
+        assert len(members) == 3
+
+    def test_function_role(self):
+        members = get_doxygen_members(
+            ["https://example.com/group__CUDART__MEMORY.html"], "cuda_runtime"
+        )
+        func = next(m for m in members if "cudaFree" in m["group"])
+        assert func["role"] == "function"
+        assert func["domain"] == "c"
+        assert func["source"] == "cuda_runtime"
+
+    def test_typedef_role(self):
+        members = get_doxygen_members(
+            ["https://example.com/group__CUDART__MEMORY.html"], "cuda_runtime"
+        )
+        td = next(m for m in members if "cudaArray_t" in m["group"])
+        assert td["role"] == "typedef"
+        assert td["domain"] == "c"
+
+    def test_enum_role(self):
+        members = get_doxygen_members(
+            ["https://example.com/group__CUDART__MEMORY.html"], "cuda_runtime"
+        )
+        en = next(m for m in members if "cudaError" in m["group"])
+        assert en["role"] == "enum"
+        assert en["domain"] == "c"
+
+    def test_deduplicates_by_url(self):
+        members = get_doxygen_members(
+            [
+                "https://example.com/group__CUDART__MEMORY.html",
+                "https://example.com/group__CUDART__MEMORY.html",
+            ],
+            "cuda_runtime",
+        )
+        assert len(members) == 3
+
+    def test_fetch_failure(self, monkeypatch):
+        import topology_mapper
+
+        monkeypatch.setattr(topology_mapper, "fetch_soup", lambda url, desc="": None)
+        members = get_doxygen_members(
+            ["https://example.com/group__X.html"], "cuda_runtime"
+        )
+        assert members == []
 
 
 # -- --list TSV output format ------------------------------------------------

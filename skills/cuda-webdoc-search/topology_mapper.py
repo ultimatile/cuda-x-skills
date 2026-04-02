@@ -156,6 +156,15 @@ def get_all_groups(modules_url, source_name="cuda_runtime"):
 # Matches Doxygen member anchors like #group__HOST_1g56ff... within group pages
 _DOXYGEN_MEMBER_RE = re.compile(r"^#(group__\w+_1\w+)")
 
+# Map Doxygen section headings to Sphinx-compatible role names
+_DOXYGEN_SECTION_ROLE = {
+    "functions": "function",
+    "typedefs": "typedef",
+    "enumerations": "enum",
+    "defines": "define",
+    "variables": "variable",
+}
+
 
 def _extract_member_name(a_tag):
     """Extract a disambiguated member name from Doxygen HTML.
@@ -177,6 +186,20 @@ def _extract_member_name(a_tag):
                 return full_text
 
     return bare_name
+
+
+def _get_section_role(tag):
+    """Walk up from a tag to find the nearest Doxygen section heading role."""
+    # Walk preceding siblings and parents to find h3.member_header
+    for parent in tag.parents:
+        for prev in parent.find_all_previous("h3", class_="member_header"):
+            heading = prev.get_text(strip=True).lower()
+            role = _DOXYGEN_SECTION_ROLE.get(heading)
+            if role is not None:
+                return role
+            break  # Only check the nearest heading
+        break  # Only check the nearest parent level
+    return ""
 
 
 def get_doxygen_members(group_urls, source_name):
@@ -211,7 +234,16 @@ def get_doxygen_members(group_urls, source_name):
             name = _extract_member_name(a)
             if not name:
                 continue
-            members.append({"group": name, "url": full_url, "source": source_name})
+            role = _get_section_role(a)
+            members.append(
+                {
+                    "group": name,
+                    "url": full_url,
+                    "role": role,
+                    "domain": "c",
+                    "source": source_name,
+                }
+            )
     return members
 
 
