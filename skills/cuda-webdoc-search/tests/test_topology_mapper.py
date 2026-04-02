@@ -35,7 +35,13 @@ SAMPLE_GROUPS = [
 SAMPLE_REGISTRY = {
     "library": [
         {"name": "cuda_runtime", "doc_type": "doxygen"},
-        {"name": "cublas", "doc_type": "sphinx"},
+        {"name": "cublas", "doc_type": "sphinx", "tags": ["cuBLAS", "cuBLASLt"]},
+        {
+            "name": "cccl",
+            "doc_type": "sphinx",
+            "tags": ["thrust", "cub", "libcudacxx"],
+            "match_threshold": 70.0,
+        },
     ]
 }
 
@@ -85,6 +91,25 @@ class TestGetLibraryConfig:
 
     def test_no_library_key(self):
         assert get_library_config({"other": []}, "cublas") is None
+
+    def test_tag_match(self):
+        lib = get_library_config(SAMPLE_REGISTRY, "thrust")
+        assert lib is not None
+        assert lib["name"] == "cccl"
+
+    def test_tag_case_insensitive(self):
+        lib = get_library_config(SAMPLE_REGISTRY, "cuBLASLt")
+        assert lib is not None
+        assert lib["name"] == "cublas"
+
+    def test_name_takes_priority_over_tag(self):
+        """Exact name match wins even if another library has a matching tag."""
+        lib = get_library_config(SAMPLE_REGISTRY, "cublas")
+        assert lib is not None
+        assert lib["name"] == "cublas"
+
+    def test_tag_no_match(self):
+        assert get_library_config(SAMPLE_REGISTRY, "nonexistent_tag") is None
 
 
 # -- filter_groups (non-fuzzy) -----------------------------------------------
@@ -476,3 +501,89 @@ class TestListTsvOutput:
         fields = line.split("\t")
         assert len(fields) == 7
         assert float(fields[5]) > 0
+
+
+# -- threshold resolution ----------------------------------------------------
+
+
+class TestThresholdResolution:
+    """Test that fuzzy threshold resolves as: CLI > registry > 60.0 fallback."""
+
+    @pytest.fixture
+    def capture_threshold(self, monkeypatch):
+        """Monkeypatch filter_groups to capture the threshold argument."""
+        import topology_mapper
+
+        captured = {}
+
+        original_filter = topology_mapper.filter_groups
+
+        def _capture(*args, **kwargs):
+            captured["threshold"] = kwargs.get(
+                "threshold", args[3] if len(args) > 3 else None
+            )
+            return original_filter(*args, **kwargs)
+
+        monkeypatch.setattr(topology_mapper, "filter_groups", _capture)
+        monkeypatch.setattr(topology_mapper, "load_registry", lambda _: SAMPLE_REGISTRY)
+        monkeypatch.setattr(
+            topology_mapper,
+            "resolve_inventory_url",
+            lambda *a, **kw: "https://example.com/objects.inv",
+        )
+        monkeypatch.setattr(
+            topology_mapper,
+            "get_sphinx_groups",
+            lambda *a, **kw: SPHINX_GROUPS,
+        )
+        return captured
+
+    @pytest.fixture
+    def run_mapper(self):
+        import io
+        from unittest.mock import patch
+
+        from topology_mapper import main
+
+        def _run(args):
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with (
+                patch("sys.argv", ["topology_mapper.py"] + args),
+                patch("sys.stdout", stdout),
+                patch("sys.stderr", stderr),
+            ):
+                try:
+                    main()
+                except SystemExit as e:
+                    if e.code != 0:
+                        raise
+            return stdout.getvalue(), stderr.getvalue()
+
+        return _run
+
+    def test_registry_threshold(self, run_mapper, capture_threshold):
+        """Uses registry match_threshold when CLI --threshold not given."""
+        run_mapper(["--source", "cccl", "--keywords", "mem", "--fuzzy", "--list"])
+        assert capture_threshold["threshold"] == 70.0
+
+    def test_cli_overrides_registry(self, run_mapper, capture_threshold):
+        """CLI --threshold takes precedence over registry."""
+        run_mapper(
+            [
+                "--source",
+                "cccl",
+                "--keywords",
+                "mem",
+                "--fuzzy",
+                "--threshold",
+                "85",
+                "--list",
+            ]
+        )
+        assert capture_threshold["threshold"] == 85.0
+
+    def test_fallback_default(self, run_mapper, capture_threshold):
+        """Falls back to 60.0 when neither CLI nor registry specify threshold."""
+        run_mapper(["--source", "cublas", "--keywords", "mem", "--fuzzy", "--list"])
+        assert capture_threshold["threshold"] == 60.0

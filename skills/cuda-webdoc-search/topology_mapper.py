@@ -316,9 +316,15 @@ def filter_groups(groups, keywords, use_fuzzy=False, threshold=60.0):
 
 
 def get_library_config(registry, name):
+    """Look up a library by exact name, then by tag match."""
     libraries = registry.get("library", [])
     for lib in libraries:
         if lib.get("name") == name:
+            return lib
+    # Fall back to case-insensitive tag lookup
+    name_lower = name.lower()
+    for lib in libraries:
+        if any(t.lower() == name_lower for t in lib.get("tags", [])):
             return lib
     return None
 
@@ -358,7 +364,10 @@ def main():
         "--fuzzy", action="store_true", help="Use fuzzy matching (requires rapidfuzz)"
     )
     parser.add_argument(
-        "--threshold", type=float, default=60.0, help="Fuzzy match threshold (0-100)"
+        "--threshold",
+        type=float,
+        default=None,
+        help="Fuzzy match threshold (0-100); defaults to registry match_threshold or 60.0",
     )
     parser.add_argument("--source", default="cuda_runtime", help="Documentation source")
     parser.add_argument(
@@ -387,6 +396,10 @@ def main():
     if not library:
         print(f"Error: source '{args.source}' not found in registry", file=sys.stderr)
         sys.exit(1)
+
+    # Resolve fuzzy threshold: CLI flag > registry match_threshold > 60.0
+    if args.threshold is None:
+        args.threshold = library.get("match_threshold", 60.0)
 
     # Resolve inventory URL for sphinx sources
     inv_url = None
