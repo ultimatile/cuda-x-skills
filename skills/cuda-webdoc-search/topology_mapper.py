@@ -491,6 +491,8 @@ def main():
             group_urls, source_name=args.source, library=library
         )
         all_groups = top_groups + members
+        if domains_filter is not None:
+            all_groups = [g for g in all_groups if g.get("domain") in domains_filter]
     elif doc_type == "sphinx_noinv":
         # Try genindex.html as synthetic inventory fallback
         index_url = library.get("index_url", "")
