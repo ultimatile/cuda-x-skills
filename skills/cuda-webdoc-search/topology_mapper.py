@@ -407,7 +407,8 @@ def main():
     if doc_type == "sphinx":
         inventory_urls = library.get("inventory_urls", [])
         base_urls = library.get("base_urls", [])
-        env_override = os.getenv("CCCL_INV_URL") if args.source == "cccl" else None
+        # Use resolved library name for env override (handles aliases like thrust → cccl)
+        env_override = os.getenv("CCCL_INV_URL") if library["name"] == "cccl" else None
         inv_url = resolve_inventory_url(
             inventory_urls, base_urls, env_override=env_override
         )
