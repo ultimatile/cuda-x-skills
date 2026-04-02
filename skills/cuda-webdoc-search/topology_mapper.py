@@ -314,17 +314,16 @@ def filter_groups(groups, keywords, use_fuzzy=False, threshold=60.0):
 
     filtered = []
 
-    # Pre-process group names for fuzzy matching
-    group_names = [g["group"] for g in groups]
-
     # Track best matches by group to avoid duplicates but keep highest score
     best_matches = {}
+    group_names_lower = None
 
     for kw in keywords:
         if use_fuzzy:
-            # Use RapidFuzz to find matches
+            if group_names_lower is None:
+                group_names_lower = [g["group"].lower() for g in groups]
             results = process.extract(
-                kw, group_names, scorer=fuzz.partial_ratio, limit=None
+                kw.lower(), group_names_lower, scorer=fuzz.partial_ratio, limit=None
             )
 
             for match, score, index in results:

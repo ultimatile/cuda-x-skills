@@ -167,6 +167,13 @@ class TestFilterGroupsFuzzy:
         assert all("score" in g for g in result)
         assert all("matched_keyword" in g for g in result)
 
+    def test_fuzzy_case_insensitive(self):
+        """Uppercase keywords match mixed-case group names case-insensitively."""
+        result = filter_groups(
+            SAMPLE_GROUPS, ["MEMCPY"], use_fuzzy=True, threshold=60.0
+        )
+        assert any(g["group"] == "cudaMemcpy" for g in result)
+
     def test_fuzzy_sorted_by_score(self):
         result = filter_groups(SAMPLE_GROUPS, ["mem"], use_fuzzy=True, threshold=50.0)
         assert result
