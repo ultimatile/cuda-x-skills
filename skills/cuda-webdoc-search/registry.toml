@@ -29,6 +29,8 @@ doc_type = "doxygen"
 index_url = "https://docs.nvidia.com/cuda/cuda-runtime-api/modules.html"
 base_urls = ["https://docs.nvidia.com/cuda/cuda-runtime-api/"]
 match_threshold = 60.0
+default_domain = "c"
+cpp_groups = ["HIGHLEVEL"]
 
 [[library]]
 name = "cublas"
@@ -58,6 +60,8 @@ description = "GPU-accelerated random number generation"
 doc_type = "doxygen"
 index_url = "https://docs.nvidia.com/cuda/curand/modules.html"
 base_urls = ["https://docs.nvidia.com/cuda/curand/"]
+default_domain = "c"
+cpp_groups = ["DEVICE"]
 
 [[library]]
 name = "cusparse"

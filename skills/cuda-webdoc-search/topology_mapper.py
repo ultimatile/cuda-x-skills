@@ -196,12 +196,23 @@ def _get_section_role(tag):
     return _DOXYGEN_SECTION_ROLE.get(heading.get_text(strip=True).lower(), "")
 
 
-def get_doxygen_members(group_urls, source_name):
+def _resolve_doxygen_domain(page_url, library):
+    """Determine domain for a Doxygen group page using registry config."""
+    default_domain = library.get("default_domain", "")
+    for pattern in library.get("cpp_groups", []):
+        if pattern in page_url:
+            return "cpp"
+    return default_domain
+
+
+def get_doxygen_members(group_urls, source_name, library=None):
     """Discover function-level members from Doxygen group pages.
 
     Fetches each group page and extracts same-page anchor links that point to
     individual API function entries (Doxygen member anchors).
     """
+    if library is None:
+        library = {}
     members = []
     seen = set()
     fetched_pages = set()
@@ -214,6 +225,8 @@ def get_doxygen_members(group_urls, source_name):
         soup = fetch_soup(page_url, "Doxygen group page")
         if not soup:
             continue
+
+        domain = _resolve_doxygen_domain(page_url, library)
 
         for a in soup.find_all("a", href=True):
             href = str(a["href"])
@@ -234,7 +247,7 @@ def get_doxygen_members(group_urls, source_name):
                     "group": name,
                     "url": full_url,
                     "role": role,
-                    "domain": "c",
+                    "domain": domain,
                     "source": source_name,
                 }
             )
@@ -474,7 +487,9 @@ def main():
         index_url = library.get("index_url", MODULES_URL)
         top_groups = get_all_groups(index_url, source_name=args.source)
         group_urls = [g["url"] for g in top_groups]
-        members = get_doxygen_members(group_urls, source_name=args.source)
+        members = get_doxygen_members(
+            group_urls, source_name=args.source, library=library
+        )
         all_groups = top_groups + members
     elif doc_type == "sphinx_noinv":
         # Try genindex.html as synthetic inventory fallback

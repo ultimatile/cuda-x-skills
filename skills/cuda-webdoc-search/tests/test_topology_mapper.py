@@ -376,6 +376,12 @@ SAMPLE_DOXYGEN_HTML = """\
 """
 
 
+SAMPLE_DOXYGEN_LIBRARY = {
+    "default_domain": "c",
+    "cpp_groups": ["HIGHLEVEL"],
+}
+
+
 class TestGetDoxygenMembers:
     @pytest.fixture(autouse=True)
     def mock_fetch(self, monkeypatch):
@@ -390,13 +396,17 @@ class TestGetDoxygenMembers:
 
     def test_extracts_all_members(self):
         members = get_doxygen_members(
-            ["https://example.com/group__CUDART__MEMORY.html"], "cuda_runtime"
+            ["https://example.com/group__CUDART__MEMORY.html"],
+            "cuda_runtime",
+            library=SAMPLE_DOXYGEN_LIBRARY,
         )
         assert len(members) == 3
 
     def test_function_role(self):
         members = get_doxygen_members(
-            ["https://example.com/group__CUDART__MEMORY.html"], "cuda_runtime"
+            ["https://example.com/group__CUDART__MEMORY.html"],
+            "cuda_runtime",
+            library=SAMPLE_DOXYGEN_LIBRARY,
         )
         func = next(m for m in members if "cudaFree" in m["group"])
         assert func["role"] == "function"
@@ -405,7 +415,9 @@ class TestGetDoxygenMembers:
 
     def test_typedef_role(self):
         members = get_doxygen_members(
-            ["https://example.com/group__CUDART__MEMORY.html"], "cuda_runtime"
+            ["https://example.com/group__CUDART__MEMORY.html"],
+            "cuda_runtime",
+            library=SAMPLE_DOXYGEN_LIBRARY,
         )
         td = next(m for m in members if "cudaArray_t" in m["group"])
         assert td["role"] == "type"
@@ -413,11 +425,29 @@ class TestGetDoxygenMembers:
 
     def test_enum_role(self):
         members = get_doxygen_members(
-            ["https://example.com/group__CUDART__MEMORY.html"], "cuda_runtime"
+            ["https://example.com/group__CUDART__MEMORY.html"],
+            "cuda_runtime",
+            library=SAMPLE_DOXYGEN_LIBRARY,
         )
         en = next(m for m in members if "cudaError" in m["group"])
         assert en["role"] == "enum"
         assert en["domain"] == "c"
+
+    def test_cpp_group_domain(self):
+        """cpp_groups pattern in URL overrides default_domain."""
+        members = get_doxygen_members(
+            ["https://example.com/group__CUDART__HIGHLEVEL.html"],
+            "cuda_runtime",
+            library=SAMPLE_DOXYGEN_LIBRARY,
+        )
+        assert all(m["domain"] == "cpp" for m in members)
+
+    def test_no_library_defaults_empty_domain(self):
+        """Without library config, domain falls back to empty string."""
+        members = get_doxygen_members(
+            ["https://example.com/group__CUDART__MEMORY.html"], "cuda_runtime"
+        )
+        assert all(m["domain"] == "" for m in members)
 
     def test_deduplicates_by_url(self):
         members = get_doxygen_members(
@@ -426,6 +456,7 @@ class TestGetDoxygenMembers:
                 "https://example.com/group__CUDART__MEMORY.html",
             ],
             "cuda_runtime",
+            library=SAMPLE_DOXYGEN_LIBRARY,
         )
         assert len(members) == 3
 
