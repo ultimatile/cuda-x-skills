@@ -372,6 +372,22 @@ SAMPLE_DOXYGEN_HTML = """\
     </span>
   </dt>
 </dl>
+<h3 class="fake_sectiontitle member_header">Defines</h3>
+<dl class="members">
+  <dt>
+    <span class="member_name">
+      <a href="#group__CUDART__DEFINES_1g004">CUDA_VERSION</a>
+    </span>
+  </dt>
+</dl>
+<h3 class="fake_sectiontitle member_header">Variables</h3>
+<dl class="members">
+  <dt>
+    <span class="member_name">
+      <a href="#group__CUDART__VARS_1g005">cudaDefaultStream</a>
+    </span>
+  </dt>
+</dl>
 </body></html>
 """
 
@@ -400,7 +416,7 @@ class TestGetDoxygenMembers:
             "cuda_runtime",
             library=SAMPLE_DOXYGEN_LIBRARY,
         )
-        assert len(members) == 3
+        assert len(members) == 5
 
     def test_function_role(self):
         members = get_doxygen_members(
@@ -433,6 +449,24 @@ class TestGetDoxygenMembers:
         assert en["role"] == "enum"
         assert en["domain"] == "c"
 
+    def test_define_role(self):
+        members = get_doxygen_members(
+            ["https://example.com/group__CUDART__MEMORY.html"],
+            "cuda_runtime",
+            library=SAMPLE_DOXYGEN_LIBRARY,
+        )
+        d = next(m for m in members if "CUDA_VERSION" in m["group"])
+        assert d["role"] == "macro"
+
+    def test_variable_role(self):
+        members = get_doxygen_members(
+            ["https://example.com/group__CUDART__MEMORY.html"],
+            "cuda_runtime",
+            library=SAMPLE_DOXYGEN_LIBRARY,
+        )
+        v = next(m for m in members if "cudaDefaultStream" in m["group"])
+        assert v["role"] == "data"
+
     def test_cpp_group_domain(self):
         """cpp_groups pattern in URL overrides default_domain."""
         members = get_doxygen_members(
@@ -458,7 +492,7 @@ class TestGetDoxygenMembers:
             "cuda_runtime",
             library=SAMPLE_DOXYGEN_LIBRARY,
         )
-        assert len(members) == 3
+        assert len(members) == 5
 
     def test_fetch_failure(self, monkeypatch):
         import topology_mapper
@@ -494,6 +528,8 @@ DOXYGEN_GROUPS = [
     {
         "group": "curandGenerate",
         "url": "https://example.com/curand",
+        "role": "function",
+        "domain": "c",
         "source": "curand",
     },
 ]
@@ -584,14 +620,14 @@ class TestListTsvOutput:
         assert fields[3] == "cpp"
         assert fields[4] == "cccl"
 
-    def test_doxygen_list_empty_metadata(self, run_mapper, monkeypatch):
-        """Doxygen --list output has empty role/domain."""
+    def test_doxygen_list_metadata(self, run_mapper, monkeypatch):
+        """Doxygen --list output includes role/domain from member extraction."""
         import topology_mapper
 
         monkeypatch.setattr(
             topology_mapper,
             "get_all_groups",
-            lambda *a, **kw: DOXYGEN_GROUPS,
+            lambda *a, **kw: [],
         )
         monkeypatch.setattr(
             topology_mapper,
@@ -604,8 +640,9 @@ class TestListTsvOutput:
         line = out.strip().splitlines()[0]
         fields = line.split("\t")
         assert len(fields) == 5
-        assert fields[2] == ""
-        assert fields[3] == ""
+        assert fields[2] == "function"
+        assert fields[3] == "c"
+        assert fields[4] == "curand"
 
     def test_fuzzy_list_has_score(self, run_mapper, monkeypatch):
         """Fuzzy --list output appends score and matched_keyword."""

@@ -206,10 +206,11 @@ def _resolve_doxygen_domain(page_url, library):
 
 
 def get_doxygen_members(group_urls, source_name, library=None):
-    """Discover function-level members from Doxygen group pages.
+    """Discover member-level entries from Doxygen group pages.
 
     Fetches each group page and extracts same-page anchor links that point to
-    individual API function entries (Doxygen member anchors).
+    individual Doxygen member anchors (functions, typedefs, enums, defines,
+    variables). Returns entries with inferred role and domain metadata.
     """
     if library is None:
         library = {}
