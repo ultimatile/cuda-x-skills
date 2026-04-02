@@ -314,15 +314,14 @@ def filter_groups(groups, keywords, use_fuzzy=False, threshold=60.0):
 
     filtered = []
 
-    # Pre-process group names for fuzzy matching (lowercase for case-insensitive)
-    group_names_lower = [g["group"].lower() for g in groups]
-
     # Track best matches by group to avoid duplicates but keep highest score
     best_matches = {}
+    group_names_lower = None
 
     for kw in keywords:
         if use_fuzzy:
-            # Use RapidFuzz with lowercased names for case-insensitive matching
+            if group_names_lower is None:
+                group_names_lower = [g["group"].lower() for g in groups]
             results = process.extract(
                 kw.lower(), group_names_lower, scorer=fuzz.partial_ratio, limit=None
             )

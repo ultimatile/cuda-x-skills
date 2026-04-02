@@ -168,7 +168,7 @@ class TestFilterGroupsFuzzy:
         assert all("matched_keyword" in g for g in result)
 
     def test_fuzzy_case_insensitive(self):
-        """Uppercase keywords match lowercase group names."""
+        """Uppercase keywords match mixed-case group names case-insensitively."""
         result = filter_groups(
             SAMPLE_GROUPS, ["MEMCPY"], use_fuzzy=True, threshold=60.0
         )
