@@ -31,8 +31,15 @@ This returns domain counts: `cpp` (C++ APIs), `c` (C APIs), `py` (Python binding
 ### Search for APIs
 
 ```bash
-uv run topology_mapper.py --source <library> --domains <domain> --keywords <terms> --fuzzy
+uv run topology_mapper.py --source <library> --domains <domain> --keywords <terms> --fuzzy --limit 20
 ```
+
+### Keyword Syntax (fzf subset)
+
+- Space-separated terms are **AND** (all must match): `--keywords SVD batch`
+- Use `|` for **OR** (requires shell quoting): `--keywords 'SVD | QR'`
+- AND binds tighter than OR: `--keywords 'a b | c'` = (a AND b) OR c
+- **Note**: Only AND/OR via `|` is supported. fzf operators `^`, `'`, `!`, `$` are not available.
 
 ### Available Libraries
 
@@ -63,8 +70,11 @@ See `registry.toml` for the full list. Common ones:
 uv run topology_mapper.py --source cuquantum --stats
 # Shows: cpp:3179, py:1172, std:3378, c:4
 
-uv run topology_mapper.py --source cuquantum --domains cpp --keywords SVD QR --fuzzy
-# Returns: cutensornetTensorSVD, cutensornetTensorQR, etc.
+uv run topology_mapper.py --source cuquantum --domains cpp --keywords SVD --fuzzy --limit 10
+# Returns: cutensornetTensorSVD, etc. (functions ranked above enumerators)
+
+uv run topology_mapper.py --source cuquantum --domains cpp --keywords 'SVD | QR' --fuzzy
+# Returns: entries matching SVD OR QR
 ```
 
 ### Find GEMM functions in cuBLAS
