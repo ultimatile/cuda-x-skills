@@ -3,6 +3,7 @@
 import pytest
 
 from topology_mapper import (
+    _parse_query_groups,
     _score_entry,
     _tokenize_name,
     filter_groups,
@@ -131,6 +132,38 @@ class TestRoleAdjustedScoring:
         assert result[0]["role"] == "function"
         assert result[1]["role"] == "enumerator"
         assert result[0]["score"] > result[1]["score"]
+
+
+# -- _parse_query_groups -----------------------------------------------------
+
+
+class TestParseQueryGroups:
+    def test_single_term(self):
+        assert _parse_query_groups(["SVD"]) == [["SVD"]]
+
+    def test_and_terms(self):
+        assert _parse_query_groups(["SVD", "QR"]) == [["SVD", "QR"]]
+
+    def test_or_separated(self):
+        assert _parse_query_groups(["SVD", "|", "QR"]) == [["SVD"], ["QR"]]
+
+    def test_or_quoted(self):
+        assert _parse_query_groups(["SVD | QR"]) == [["SVD"], ["QR"]]
+
+    def test_mixed_and_or(self):
+        assert _parse_query_groups(["a", "b", "|", "c"]) == [["a", "b"], ["c"]]
+
+    def test_leading_pipe_ignored(self):
+        assert _parse_query_groups(["|", "SVD"]) == [["SVD"]]
+
+    def test_trailing_pipe_ignored(self):
+        assert _parse_query_groups(["SVD", "|"]) == [["SVD"]]
+
+    def test_consecutive_pipes(self):
+        assert _parse_query_groups(["a", "|", "|", "b"]) == [["a"], ["b"]]
+
+    def test_empty(self):
+        assert _parse_query_groups([]) == []
 
 
 # -- fixtures ----------------------------------------------------------------
@@ -263,15 +296,27 @@ class TestFilterGroupsNonFuzzy:
         result = filter_groups(SAMPLE_GROUPS, ["nonexistent"])
         assert len(result) == 0
 
-    def test_multiple_keywords(self):
-        result = filter_groups(SAMPLE_GROUPS, ["Memcpy", "Free"])
-        assert len(result) == 2
+    def test_multiple_keywords_and(self):
+        """Space-separated keywords use AND: both must match."""
+        result = filter_groups(SAMPLE_GROUPS, ["cuda", "Mem"])
+        # Only cudaMemcpy contains both "cuda" AND "Mem" (cudaMalloc has no "Mem")
+        names = {g["group"] for g in result}
+        assert names == {"cudaMemcpy"}
+
+    def test_multiple_keywords_or(self):
+        """Pipe-separated keywords use OR."""
+        result = filter_groups(SAMPLE_GROUPS, ["Memcpy", "|", "Free"])
+        names = {g["group"] for g in result}
+        assert names == {"cudaMemcpy", "cudaFree"}
+
+    def test_or_quoted(self):
+        """Quoted pipe also works."""
+        result = filter_groups(SAMPLE_GROUPS, ["Memcpy | Free"])
         names = {g["group"] for g in result}
         assert names == {"cudaMemcpy", "cudaFree"}
 
     def test_no_duplicates(self):
-        result = filter_groups(SAMPLE_GROUPS, ["cuda", "Mem"])
-        # "cudaMemcpy" and "cudaMalloc" match "cuda"; "cudaMemcpy" also matches "Mem"
+        result = filter_groups(SAMPLE_GROUPS, ["cuda", "|", "Mem"])
         groups = [g["group"] for g in result]
         assert len(groups) == len(set(groups))
 

@@ -395,42 +395,92 @@ def format_list_row(
     return line
 
 
+def _parse_query_groups(keywords):
+    """Split keyword tokens into OR-groups of AND-terms (fzf-subset syntax).
+
+    Handles both shell-separated tokens and quoted strings:
+      ['SVD', 'QR']        -> [['SVD', 'QR']]            # AND
+      ['SVD', '|', 'QR']   -> [['SVD'], ['QR']]           # OR
+      ['SVD | QR']          -> [['SVD'], ['QR']]           # OR (quoted)
+      ['a', 'b', '|', 'c'] -> [['a', 'b'], ['c']]         # (a AND b) OR c
+    """
+    all_tokens = " ".join(keywords).split()
+    groups = []
+    current = []
+    for token in all_tokens:
+        if token == "|":
+            if current:
+                groups.append(current)
+            current = []
+        else:
+            current.append(token)
+    if current:
+        groups.append(current)
+    return [g for g in groups if g]
+
+
 def filter_groups(groups, keywords, use_fuzzy=False, threshold=60.0):
     if not keywords:
         return groups
 
+    query_groups = _parse_query_groups(keywords)
+    if not query_groups:
+        return groups
+
     if use_fuzzy:
-        # Precompute segments once per candidate
         segments_cache = [_tokenize_name(g["group"]) for g in groups]
 
         best_matches = {}
-        for kw in keywords:
-            for index, g in enumerate(groups):
-                base = _score_entry(kw, g["group"], segments_cache[index])
-                role = g.get("role", "")
-                score = base + _ROLE_SCORE_ADJUST.get(role, 0)
-                score = max(0.0, min(score, 100.0))
+        for index, g in enumerate(groups):
+            role = g.get("role", "")
+            adjust = _ROLE_SCORE_ADJUST.get(role, 0)
 
-                if score >= threshold:
-                    key = g["url"]
-                    if key not in best_matches or score > best_matches[key]["score"]:
-                        item_copy = g.copy()
-                        item_copy["score"] = score
-                        item_copy["matched_keyword"] = kw
-                        best_matches[key] = item_copy
+            best_group_score = None
+            best_group_terms = None
+
+            for or_group in query_groups:
+                # AND: entry must pass threshold for every term in the group
+                term_scores = []
+                for term in or_group:
+                    base = _score_entry(term, g["group"], segments_cache[index])
+                    score = max(0.0, min(base + adjust, 100.0))
+                    if score < threshold:
+                        break
+                    term_scores.append(score)
+                else:
+                    # All terms matched — score is min (weakest link)
+                    group_score = min(term_scores)
+                    if best_group_score is None or group_score > best_group_score:
+                        best_group_score = group_score
+                        best_group_terms = or_group
+
+            if best_group_score is not None:
+                key = g["url"]
+                if (
+                    key not in best_matches
+                    or best_group_score > best_matches[key]["score"]
+                ):
+                    item_copy = g.copy()
+                    item_copy["score"] = best_group_score
+                    item_copy["matched_keyword"] = ",".join(best_group_terms)
+                    best_matches[key] = item_copy
 
         filtered = list(best_matches.values())
         filtered.sort(key=lambda x: -x["score"])
         return filtered
 
-    # Non-fuzzy fallback
+    # Non-fuzzy fallback with AND/OR
     filtered = []
-    for kw in keywords:
-        kw_lower = kw.lower()
+    seen = set()
+    for or_group in query_groups:
         for g in groups:
-            if kw_lower in g["group"].lower():
-                if g not in filtered:
-                    filtered.append(g)
+            key = g.get("url", id(g))
+            if key in seen:
+                continue
+            name_lower = g["group"].lower()
+            if all(term.lower() in name_lower for term in or_group):
+                filtered.append(g)
+                seen.add(key)
 
     return filtered
 
@@ -470,7 +520,11 @@ def main():
     parser.add_argument(
         "--keywords",
         nargs="+",
-        help="Keywords to filter API groups (e.g. 'Memory', 'Stream')",
+        help=(
+            "Keywords to filter API groups. Space-separated terms are AND; "
+            "use '|' for OR (requires shell quoting). "
+            "Example: --keywords SVD batch  (AND), --keywords 'SVD | QR'  (OR)"
+        ),
     )
     parser.add_argument(
         "--json", action="store_true", help="Output in JSON format (default)"
