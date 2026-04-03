@@ -165,6 +165,17 @@ class TestParseQueryGroups:
     def test_empty(self):
         assert _parse_query_groups([]) == []
 
+    def test_pipe_only(self):
+        """Pipe-only input yields empty groups."""
+        assert _parse_query_groups(["|"]) == []
+
+
+class TestFilterGroupsEmptyQuery:
+    def test_pipe_only_returns_empty(self):
+        """keywords='|' should return no matches, not all groups."""
+        result = filter_groups(SAMPLE_GROUPS, ["|"])
+        assert result == []
+
 
 # -- fixtures ----------------------------------------------------------------
 

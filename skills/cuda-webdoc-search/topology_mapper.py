@@ -425,7 +425,7 @@ def filter_groups(groups, keywords, use_fuzzy=False, threshold=60.0):
 
     query_groups = _parse_query_groups(keywords)
     if not query_groups:
-        return groups
+        return []
 
     if use_fuzzy:
         segments_cache = [_tokenize_name(g["group"]) for g in groups]
