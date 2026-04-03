@@ -369,6 +369,27 @@ class TestFilterGroupsFuzzy:
         urls = [g["url"] for g in result]
         assert len(urls) == len(set(urls))
 
+    def test_fuzzy_or(self):
+        """Fuzzy OR: 'Memcpy | Free' should match both."""
+        result = filter_groups(
+            SAMPLE_GROUPS, ["Memcpy", "|", "Free"], use_fuzzy=True, threshold=60.0
+        )
+        names = {g["group"] for g in result}
+        assert "cudaMemcpy" in names
+        assert "cudaFree" in names
+
+    def test_fuzzy_mixed_and_or(self):
+        """Fuzzy mixed: 'cuda Stream | Memcpy' = (cuda AND Stream) OR Memcpy."""
+        result = filter_groups(
+            SAMPLE_GROUPS,
+            ["cuda", "Stream", "|", "Memcpy"],
+            use_fuzzy=True,
+            threshold=60.0,
+        )
+        names = {g["group"] for g in result}
+        assert "cudaStreamCreate" in names
+        assert "cudaMemcpy" in names
+
 
 # -- --limit option ----------------------------------------------------------
 
