@@ -27,7 +27,6 @@ For `pdf` type:
 - `description` (string): Human-readable label used in logs/UI.
 - `base_urls` (array of string): Base URLs for resolving relative links.
 - `match_threshold` (float): Fuzzy match threshold (0-100). Default: 60.0
-- `enabled` (bool): Toggle entry. Default: true
 - `tags` (array of string): Free-form metadata, e.g. `["open", "vendor:nvidia"]`.
 - `auth` (string): Authentication hint, e.g. `none`, `cookie`, `token`.
 - `repo` (string): Repository URL, e.g. `https://github.com/NVIDIA/AMGX`.
