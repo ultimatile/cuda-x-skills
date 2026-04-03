@@ -443,15 +443,17 @@ def filter_groups(groups, keywords, use_fuzzy=False, threshold=60.0):
                 term_scores = []
                 for term in or_group:
                     base = _score_entry(term, g["group"], segments_cache[index])
-                    score = max(0.0, min(base + adjust, 100.0))
-                    if score < threshold:
+                    # Threshold on text-match quality only (before role adjust)
+                    if base < threshold:
                         break
-                    term_scores.append(score)
+                    term_scores.append(base)
                 else:
                     # All terms matched — score is min (weakest link)
                     group_score = min(term_scores)
-                    if best_group_score is None or group_score > best_group_score:
-                        best_group_score = group_score
+                    # Apply role adjustment for ranking only
+                    ranked_score = max(0.0, min(group_score + adjust, 100.0))
+                    if best_group_score is None or ranked_score > best_group_score:
+                        best_group_score = ranked_score
                         best_group_terms = or_group
 
             if best_group_score is not None:
@@ -729,6 +731,7 @@ def main():
     else:
         candidates = all_groups
 
+    filtered_count = len(candidates)
     if args.limit is not None:
         candidates = candidates[: args.limit]
 
@@ -750,7 +753,7 @@ def main():
         output = {
             "source": args.source,
             "total_found": len(all_groups),
-            "filtered_count": len(candidates),
+            "filtered_count": filtered_count,
             "domains_filter": args.domains,
             "candidates": candidates,
         }

@@ -428,17 +428,21 @@ class TestLimitOption:
         import json
 
         out, _ = run_mapper(
-            ["--source", "cccl", "--keywords", "SVD", "--fuzzy", "--limit", "2"]
+            ["--source", "cccl", "--keywords", "SVD", "--fuzzy", "--limit", "1"]
         )
         data = json.loads(out)
-        assert data["filtered_count"] <= 2
+        # candidates truncated but filtered_count reflects pre-limit total
+        assert len(data["candidates"]) == 1
+        assert data["filtered_count"] >= 1
 
-    def test_limit_without_keywords(self, run_mapper):
+    def test_filtered_count_preserves_pre_limit(self, run_mapper):
         import json
 
         out, _ = run_mapper(["--source", "cccl", "--limit", "1"])
         data = json.loads(out)
         assert len(data["candidates"]) == 1
+        # 3 items in LIMIT_TEST_GROUPS, filtered_count should be 3
+        assert data["filtered_count"] == 3
 
     def test_limit_zero_errors(self):
         """--limit 0 should cause an argparse error."""
