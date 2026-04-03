@@ -71,6 +71,13 @@ inventory_urls = ["https://docs.nvidia.com/cuda/cusparse/objects.inv"]
 base_urls = ["https://docs.nvidia.com/cuda/cusparse/"]
 
 [[library]]
+name = "cudss"
+description = "GPU-accelerated direct sparse solvers"
+doc_type = "sphinx"
+inventory_urls = ["https://docs.nvidia.com/cuda/cudss/objects.inv"]
+base_urls = ["https://docs.nvidia.com/cuda/cudss/"]
+
+[[library]]
 name = "cusolver"
 description = "GPU-accelerated dense and sparse direct solvers"
 doc_type = "sphinx"
