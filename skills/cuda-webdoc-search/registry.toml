@@ -71,6 +71,13 @@ inventory_urls = ["https://docs.nvidia.com/cuda/cusparse/objects.inv"]
 base_urls = ["https://docs.nvidia.com/cuda/cusparse/"]
 
 [[library]]
+name = "npp"
+description = "GPU-accelerated image and signal processing primitives"
+doc_type = "sphinx"
+inventory_urls = ["https://docs.nvidia.com/cuda/npp/objects.inv"]
+base_urls = ["https://docs.nvidia.com/cuda/npp/"]
+
+[[library]]
 name = "cudss"
 description = "GPU-accelerated direct sparse solvers"
 doc_type = "sphinx"
@@ -130,6 +137,14 @@ doc_type = "sphinx"
 inventory_urls = ["https://docs.nvidia.com/cuda/nvcomp/objects.inv"]
 base_urls = ["https://docs.nvidia.com/cuda/nvcomp/"]
 
+# [[library]]
+# name = "nvjpeg"
+# description = "GPU-accelerated JPEG encoding and decoding"
+# doc_type = "sphinx"
+# inventory_urls = ["https://docs.nvidia.com/cuda/nvjpeg/objects.inv"]
+# base_urls = ["https://docs.nvidia.com/cuda/nvjpeg/"]
+# NOTE: objects.inv contains only std:label entries (no C/C++ symbols)
+
 [[library]]
 name = "nvimagecodec"
 description = "GPU-accelerated image codec library with unified interface"
@@ -152,6 +167,20 @@ doc_url = "https://github.com/NVIDIA/AMGX/raw/main/doc/AMGX_Reference.pdf"
 repo = "https://github.com/NVIDIA/AMGX"
 
 [[library]]
+name = "nvrtc"
+description = "CUDA runtime compilation API"
+doc_type = "sphinx"
+inventory_urls = ["https://docs.nvidia.com/cuda/nvrtc/objects.inv"]
+base_urls = ["https://docs.nvidia.com/cuda/nvrtc/"]
+
+[[library]]
+name = "nvjitlink"
+description = "CUDA JIT linking API"
+doc_type = "sphinx"
+inventory_urls = ["https://docs.nvidia.com/cuda/nvjitlink/objects.inv"]
+base_urls = ["https://docs.nvidia.com/cuda/nvjitlink/"]
+
+[[library]]
 name = "cuda_math"
 description = "GPU-accelerated standard mathematical functions"
 doc_type = "sphinx"
@@ -165,6 +194,14 @@ doc_type = "sphinx"
 inventory_urls = ["https://docs.nvidia.com/cutlass/latest/objects.inv"]
 base_urls = ["https://docs.nvidia.com/cutlass/latest/"]
 repo = "https://github.com/NVIDIA/cutlass"
+
+# [[library]]
+# name = "cufile"
+# description = "GPUDirect Storage API for direct GPU-storage I/O"
+# doc_type = "sphinx"
+# inventory_urls = ["https://docs.nvidia.com/gpudirect-storage/api-reference-guide/objects.inv"]
+# base_urls = ["https://docs.nvidia.com/gpudirect-storage/api-reference-guide/"]
+# NOTE: objects.inv contains only std:label entries (no C/C++ symbols)
 
 [[library]]
 name = "nvshmem"
