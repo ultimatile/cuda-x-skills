@@ -557,8 +557,16 @@ def main():
         action="store_true",
         help="Show domain statistics for the inventory instead of searching",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Maximum number of results to return (must be >= 1)",
+    )
 
     args = parser.parse_args()
+    if args.limit is not None and args.limit < 1:
+        parser.error("--limit must be >= 1")
     domains_filter = parse_domains(args.domains)
 
     registry = load_registry(args.registry)
@@ -720,6 +728,9 @@ def main():
         )
     else:
         candidates = all_groups
+
+    if args.limit is not None:
+        candidates = candidates[: args.limit]
 
     # 3. Output results
     if args.list:

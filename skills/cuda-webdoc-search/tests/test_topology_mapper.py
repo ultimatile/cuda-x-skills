@@ -359,6 +359,106 @@ class TestFilterGroupsFuzzy:
         assert len(urls) == len(set(urls))
 
 
+# -- --limit option ----------------------------------------------------------
+
+
+LIMIT_TEST_GROUPS = [
+    {
+        "group": "cutensornetTensorSVD",
+        "url": "https://example.com/svd1",
+        "role": "function",
+        "domain": "cpp",
+        "source": "cuquantum",
+    },
+    {
+        "group": "cutensornetTensorSVDConfig",
+        "url": "https://example.com/svd2",
+        "role": "function",
+        "domain": "cpp",
+        "source": "cuquantum",
+    },
+    {
+        "group": "CUTENSORNET_TENSOR_SVD_ALGO",
+        "url": "https://example.com/svd3",
+        "role": "enumerator",
+        "domain": "cpp",
+        "source": "cuquantum",
+    },
+]
+
+
+class TestLimitOption:
+    @pytest.fixture
+    def run_mapper(self, monkeypatch):
+        import io
+        from unittest.mock import patch
+
+        import topology_mapper
+
+        monkeypatch.setattr(topology_mapper, "load_registry", lambda _: SAMPLE_REGISTRY)
+        monkeypatch.setattr(
+            topology_mapper,
+            "resolve_inventory_url",
+            lambda *a, **kw: "https://example.com/objects.inv",
+        )
+        monkeypatch.setattr(
+            topology_mapper,
+            "get_sphinx_groups",
+            lambda *a, **kw: LIMIT_TEST_GROUPS,
+        )
+
+        def _run(args):
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with (
+                patch("sys.argv", ["topology_mapper.py"] + args),
+                patch("sys.stdout", stdout),
+                patch("sys.stderr", stderr),
+            ):
+                try:
+                    topology_mapper.main()
+                except SystemExit as e:
+                    if e.code not in (0, None):
+                        raise
+            return stdout.getvalue(), stderr.getvalue()
+
+        return _run
+
+    def test_limit_truncates(self, run_mapper):
+        import json
+
+        out, _ = run_mapper(
+            ["--source", "cccl", "--keywords", "SVD", "--fuzzy", "--limit", "2"]
+        )
+        data = json.loads(out)
+        assert data["filtered_count"] <= 2
+
+    def test_limit_without_keywords(self, run_mapper):
+        import json
+
+        out, _ = run_mapper(["--source", "cccl", "--limit", "1"])
+        data = json.loads(out)
+        assert len(data["candidates"]) == 1
+
+    def test_limit_zero_errors(self):
+        """--limit 0 should cause an argparse error."""
+        import io
+        from unittest.mock import patch
+
+        from topology_mapper import main
+
+        with pytest.raises(SystemExit):
+            with (
+                patch(
+                    "sys.argv",
+                    ["topology_mapper.py", "--source", "cccl", "--limit", "0"],
+                ),
+                patch("sys.stdout", io.StringIO()),
+                patch("sys.stderr", io.StringIO()),
+            ):
+                main()
+
+
 # -- main() output branches for non-searchable sources ----------------------
 
 
