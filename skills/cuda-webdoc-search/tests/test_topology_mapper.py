@@ -3,6 +3,8 @@
 import pytest
 
 from topology_mapper import (
+    _score_entry,
+    _tokenize_name,
     filter_groups,
     format_list_row,
     get_doxygen_members,
@@ -10,6 +12,125 @@ from topology_mapper import (
     get_library_config,
     parse_domains,
 )
+
+
+# -- _tokenize_name ----------------------------------------------------------
+
+
+class TestTokenizeName:
+    def test_camel_case(self):
+        assert _tokenize_name("cudaMemcpy") == ["cuda", "memcpy"]
+
+    def test_underscore(self):
+        assert _tokenize_name("CUTENSOR_ALGO_SVD") == ["cutensor", "algo", "svd"]
+
+    def test_mixed_camel(self):
+        assert _tokenize_name("cutensornetTensorSVD") == [
+            "cutensornet",
+            "tensor",
+            "svd",
+        ]
+
+    def test_all_upper_segments(self):
+        assert _tokenize_name("SVD") == ["svd"]
+
+    def test_consecutive_upper_then_lower(self):
+        # "cuBLAS" -> ['cu', 'blas'] or similar
+        result = _tokenize_name("cuBLAS")
+        assert result[-1] == "blas"
+
+    def test_empty(self):
+        assert _tokenize_name("") == []
+
+    def test_colons(self):
+        assert _tokenize_name("std::vector") == ["std", "vector"]
+
+    def test_hyphens(self):
+        assert _tokenize_name("cusolverdn-lt-t-gt-gesvd") == [
+            "cusolverdn",
+            "lt",
+            "t",
+            "gt",
+            "gesvd",
+        ]
+
+
+# -- _score_entry ------------------------------------------------------------
+
+
+class TestScoreEntry:
+    def test_exact_match(self):
+        assert _score_entry("cudaMemcpy", "cudaMemcpy") == 100.0
+
+    def test_exact_case_insensitive(self):
+        assert _score_entry("CUDAMEMCPY", "cudaMemcpy") == 100.0
+
+    def test_segment_exact(self):
+        # "svd" matches segment "svd" in "cutensornetTensorSVD"
+        assert _score_entry("SVD", "cutensornetTensorSVD") == 97.0
+
+    def test_segment_prefix(self):
+        # "mem" matches start of segment "memcpy"
+        assert _score_entry("mem", "cudaMemcpy") == 94.0
+
+    def test_boundary_contained(self):
+        # "ensor" is a substring but not a segment match
+        assert _score_entry("ensor", "cutensornetTensorSVD") == 88.0
+
+    def test_fuzzy_capped(self):
+        # Something that doesn't match any tier but fuzzy matches somewhat
+        score = _score_entry("mempcy", "cudaMemcpy")
+        assert score <= 82.0
+
+    def test_no_match(self):
+        score = _score_entry("zzzzz", "cudaMemcpy")
+        assert score < 60.0
+
+    def test_precomputed_segments(self):
+        segs = ["cuda", "memcpy"]
+        assert _score_entry("memcpy", "cudaMemcpy", segments=segs) == 97.0
+
+    def test_doxygen_signature_exact(self):
+        # Bare name "cudaFree" should score exact against signature
+        assert _score_entry("cudaFree", "cudaFree ( void* devPtr )") == 100.0
+
+    def test_doxygen_signature_segment(self):
+        # Segment match against bare name portion of signature
+        score = _score_entry("Free", "cudaFree ( void* devPtr )")
+        assert score == 97.0
+
+
+# -- filter_groups with role adjustment --------------------------------------
+
+
+SAMPLE_GROUPS_WITH_ROLES = [
+    {
+        "group": "cutensornetTensorSVD",
+        "url": "https://example.com/svd-func",
+        "role": "function",
+        "domain": "cpp",
+        "source": "cuquantum",
+    },
+    {
+        "group": "CUTENSORNET_TENSOR_SVD_ALGO_GESVD",
+        "url": "https://example.com/svd-enum",
+        "role": "enumerator",
+        "domain": "cpp",
+        "source": "cuquantum",
+    },
+]
+
+
+class TestRoleAdjustedScoring:
+    def test_function_ranks_above_enumerator(self):
+        """Function with segment-exact SVD should outrank enumerator with segment-exact SVD."""
+        result = filter_groups(
+            SAMPLE_GROUPS_WITH_ROLES, ["SVD"], use_fuzzy=True, threshold=50.0
+        )
+        assert len(result) == 2
+        assert result[0]["role"] == "function"
+        assert result[1]["role"] == "enumerator"
+        assert result[0]["score"] > result[1]["score"]
 
 
 # -- fixtures ----------------------------------------------------------------
