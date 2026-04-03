@@ -3,6 +3,9 @@
 import pytest
 
 from topology_mapper import (
+    _parse_query_groups,
+    _score_entry,
+    _tokenize_name,
     filter_groups,
     format_list_row,
     get_doxygen_members,
@@ -10,6 +13,168 @@ from topology_mapper import (
     get_library_config,
     parse_domains,
 )
+
+
+# -- _tokenize_name ----------------------------------------------------------
+
+
+class TestTokenizeName:
+    def test_camel_case(self):
+        assert _tokenize_name("cudaMemcpy") == ["cuda", "memcpy"]
+
+    def test_underscore(self):
+        assert _tokenize_name("CUTENSOR_ALGO_SVD") == ["cutensor", "algo", "svd"]
+
+    def test_mixed_camel(self):
+        assert _tokenize_name("cutensornetTensorSVD") == [
+            "cutensornet",
+            "tensor",
+            "svd",
+        ]
+
+    def test_all_upper_segments(self):
+        assert _tokenize_name("SVD") == ["svd"]
+
+    def test_consecutive_upper_then_lower(self):
+        # "cuBLAS" -> ['cu', 'blas'] or similar
+        result = _tokenize_name("cuBLAS")
+        assert result[-1] == "blas"
+
+    def test_empty(self):
+        assert _tokenize_name("") == []
+
+    def test_colons(self):
+        assert _tokenize_name("std::vector") == ["std", "vector"]
+
+    def test_hyphens(self):
+        assert _tokenize_name("cusolverdn-lt-t-gt-gesvd") == [
+            "cusolverdn",
+            "lt",
+            "t",
+            "gt",
+            "gesvd",
+        ]
+
+
+# -- _score_entry ------------------------------------------------------------
+
+
+class TestScoreEntry:
+    def test_exact_match(self):
+        assert _score_entry("cudaMemcpy", "cudaMemcpy") == 100.0
+
+    def test_exact_case_insensitive(self):
+        assert _score_entry("CUDAMEMCPY", "cudaMemcpy") == 100.0
+
+    def test_segment_exact(self):
+        # "svd" matches segment "svd" in "cutensornetTensorSVD"
+        assert _score_entry("SVD", "cutensornetTensorSVD") == 97.0
+
+    def test_segment_prefix(self):
+        # "mem" matches start of segment "memcpy"
+        assert _score_entry("mem", "cudaMemcpy") == 94.0
+
+    def test_boundary_contained(self):
+        # "ensor" is a substring but not a segment match
+        assert _score_entry("ensor", "cutensornetTensorSVD") == 88.0
+
+    def test_fuzzy_capped(self):
+        # Something that doesn't match any tier but fuzzy matches somewhat
+        score = _score_entry("mempcy", "cudaMemcpy")
+        assert score <= 82.0
+
+    def test_no_match(self):
+        score = _score_entry("zzzzz", "cudaMemcpy")
+        assert score < 60.0
+
+    def test_precomputed_segments(self):
+        segs = ["cuda", "memcpy"]
+        assert _score_entry("memcpy", "cudaMemcpy", segments=segs) == 97.0
+
+    def test_doxygen_signature_exact(self):
+        # Bare name "cudaFree" should score exact against signature
+        assert _score_entry("cudaFree", "cudaFree ( void* devPtr )") == 100.0
+
+    def test_doxygen_signature_segment(self):
+        # Segment match against bare name portion of signature
+        score = _score_entry("Free", "cudaFree ( void* devPtr )")
+        assert score == 97.0
+
+
+# -- filter_groups with role adjustment --------------------------------------
+
+
+SAMPLE_GROUPS_WITH_ROLES = [
+    {
+        "group": "cutensornetTensorSVD",
+        "url": "https://example.com/svd-func",
+        "role": "function",
+        "domain": "cpp",
+        "source": "cuquantum",
+    },
+    {
+        "group": "CUTENSORNET_TENSOR_SVD_ALGO_GESVD",
+        "url": "https://example.com/svd-enum",
+        "role": "enumerator",
+        "domain": "cpp",
+        "source": "cuquantum",
+    },
+]
+
+
+class TestRoleAdjustedScoring:
+    def test_function_ranks_above_enumerator(self):
+        """Function with segment-exact SVD should outrank enumerator with segment-exact SVD."""
+        result = filter_groups(
+            SAMPLE_GROUPS_WITH_ROLES, ["SVD"], use_fuzzy=True, threshold=50.0
+        )
+        assert len(result) == 2
+        assert result[0]["role"] == "function"
+        assert result[1]["role"] == "enumerator"
+        assert result[0]["score"] > result[1]["score"]
+
+
+# -- _parse_query_groups -----------------------------------------------------
+
+
+class TestParseQueryGroups:
+    def test_single_term(self):
+        assert _parse_query_groups(["SVD"]) == [["SVD"]]
+
+    def test_and_terms(self):
+        assert _parse_query_groups(["SVD", "QR"]) == [["SVD", "QR"]]
+
+    def test_or_separated(self):
+        assert _parse_query_groups(["SVD", "|", "QR"]) == [["SVD"], ["QR"]]
+
+    def test_or_quoted(self):
+        assert _parse_query_groups(["SVD | QR"]) == [["SVD"], ["QR"]]
+
+    def test_mixed_and_or(self):
+        assert _parse_query_groups(["a", "b", "|", "c"]) == [["a", "b"], ["c"]]
+
+    def test_leading_pipe_ignored(self):
+        assert _parse_query_groups(["|", "SVD"]) == [["SVD"]]
+
+    def test_trailing_pipe_ignored(self):
+        assert _parse_query_groups(["SVD", "|"]) == [["SVD"]]
+
+    def test_consecutive_pipes(self):
+        assert _parse_query_groups(["a", "|", "|", "b"]) == [["a"], ["b"]]
+
+    def test_empty(self):
+        assert _parse_query_groups([]) == []
+
+    def test_pipe_only(self):
+        """Pipe-only input yields empty groups."""
+        assert _parse_query_groups(["|"]) == []
+
+
+class TestFilterGroupsEmptyQuery:
+    def test_pipe_only_returns_empty(self):
+        """keywords='|' should return no matches, not all groups."""
+        result = filter_groups(SAMPLE_GROUPS, ["|"])
+        assert result == []
 
 
 # -- fixtures ----------------------------------------------------------------
@@ -142,15 +307,27 @@ class TestFilterGroupsNonFuzzy:
         result = filter_groups(SAMPLE_GROUPS, ["nonexistent"])
         assert len(result) == 0
 
-    def test_multiple_keywords(self):
-        result = filter_groups(SAMPLE_GROUPS, ["Memcpy", "Free"])
-        assert len(result) == 2
+    def test_multiple_keywords_and(self):
+        """Space-separated keywords use AND: both must match."""
+        result = filter_groups(SAMPLE_GROUPS, ["cuda", "Mem"])
+        # Only cudaMemcpy contains both "cuda" AND "Mem" (cudaMalloc has no "Mem")
+        names = {g["group"] for g in result}
+        assert names == {"cudaMemcpy"}
+
+    def test_multiple_keywords_or(self):
+        """Pipe-separated keywords use OR."""
+        result = filter_groups(SAMPLE_GROUPS, ["Memcpy", "|", "Free"])
+        names = {g["group"] for g in result}
+        assert names == {"cudaMemcpy", "cudaFree"}
+
+    def test_or_quoted(self):
+        """Quoted pipe also works."""
+        result = filter_groups(SAMPLE_GROUPS, ["Memcpy | Free"])
         names = {g["group"] for g in result}
         assert names == {"cudaMemcpy", "cudaFree"}
 
     def test_no_duplicates(self):
-        result = filter_groups(SAMPLE_GROUPS, ["cuda", "Mem"])
-        # "cudaMemcpy" and "cudaMalloc" match "cuda"; "cudaMemcpy" also matches "Mem"
+        result = filter_groups(SAMPLE_GROUPS, ["cuda", "|", "Mem"])
         groups = [g["group"] for g in result]
         assert len(groups) == len(set(groups))
 
@@ -191,6 +368,131 @@ class TestFilterGroupsFuzzy:
         assert result
         urls = [g["url"] for g in result]
         assert len(urls) == len(set(urls))
+
+    def test_fuzzy_or(self):
+        """Fuzzy OR: 'Memcpy | Free' should match both."""
+        result = filter_groups(
+            SAMPLE_GROUPS, ["Memcpy", "|", "Free"], use_fuzzy=True, threshold=60.0
+        )
+        names = {g["group"] for g in result}
+        assert "cudaMemcpy" in names
+        assert "cudaFree" in names
+
+    def test_fuzzy_mixed_and_or(self):
+        """Fuzzy mixed: 'cuda Stream | Memcpy' = (cuda AND Stream) OR Memcpy."""
+        result = filter_groups(
+            SAMPLE_GROUPS,
+            ["cuda", "Stream", "|", "Memcpy"],
+            use_fuzzy=True,
+            threshold=60.0,
+        )
+        names = {g["group"] for g in result}
+        assert "cudaStreamCreate" in names
+        assert "cudaMemcpy" in names
+
+
+# -- --limit option ----------------------------------------------------------
+
+
+LIMIT_TEST_GROUPS = [
+    {
+        "group": "cutensornetTensorSVD",
+        "url": "https://example.com/svd1",
+        "role": "function",
+        "domain": "cpp",
+        "source": "cuquantum",
+    },
+    {
+        "group": "cutensornetTensorSVDConfig",
+        "url": "https://example.com/svd2",
+        "role": "function",
+        "domain": "cpp",
+        "source": "cuquantum",
+    },
+    {
+        "group": "CUTENSORNET_TENSOR_SVD_ALGO",
+        "url": "https://example.com/svd3",
+        "role": "enumerator",
+        "domain": "cpp",
+        "source": "cuquantum",
+    },
+]
+
+
+class TestLimitOption:
+    @pytest.fixture
+    def run_mapper(self, monkeypatch):
+        import io
+        from unittest.mock import patch
+
+        import topology_mapper
+
+        monkeypatch.setattr(topology_mapper, "load_registry", lambda _: SAMPLE_REGISTRY)
+        monkeypatch.setattr(
+            topology_mapper,
+            "resolve_inventory_url",
+            lambda *a, **kw: "https://example.com/objects.inv",
+        )
+        monkeypatch.setattr(
+            topology_mapper,
+            "get_sphinx_groups",
+            lambda *a, **kw: LIMIT_TEST_GROUPS,
+        )
+
+        def _run(args):
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with (
+                patch("sys.argv", ["topology_mapper.py"] + args),
+                patch("sys.stdout", stdout),
+                patch("sys.stderr", stderr),
+            ):
+                try:
+                    topology_mapper.main()
+                except SystemExit as e:
+                    if e.code not in (0, None):
+                        raise
+            return stdout.getvalue(), stderr.getvalue()
+
+        return _run
+
+    def test_limit_truncates(self, run_mapper):
+        import json
+
+        out, _ = run_mapper(
+            ["--source", "cccl", "--keywords", "SVD", "--fuzzy", "--limit", "1"]
+        )
+        data = json.loads(out)
+        # candidates truncated but filtered_count reflects pre-limit total
+        assert len(data["candidates"]) == 1
+        assert data["filtered_count"] >= 1
+
+    def test_filtered_count_preserves_pre_limit(self, run_mapper):
+        import json
+
+        out, _ = run_mapper(["--source", "cccl", "--limit", "1"])
+        data = json.loads(out)
+        assert len(data["candidates"]) == 1
+        # 3 items in LIMIT_TEST_GROUPS, filtered_count should be 3
+        assert data["filtered_count"] == 3
+
+    def test_limit_zero_errors(self):
+        """--limit 0 should cause an argparse error."""
+        import io
+        from unittest.mock import patch
+
+        from topology_mapper import main
+
+        with pytest.raises(SystemExit):
+            with (
+                patch(
+                    "sys.argv",
+                    ["topology_mapper.py", "--source", "cccl", "--limit", "0"],
+                ),
+                patch("sys.stdout", io.StringIO()),
+                patch("sys.stderr", io.StringIO()),
+            ):
+                main()
 
 
 # -- main() output branches for non-searchable sources ----------------------
