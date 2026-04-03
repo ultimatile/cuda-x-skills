@@ -248,6 +248,8 @@ def get_doxygen_members(group_urls, source_name, library=None, max_workers=4):
 
     # Deduplicate page URLs (strip fragment)
     unique_pages = list(dict.fromkeys(url.split("#")[0] for url in group_urls))
+    if not unique_pages:
+        return []
 
     with ThreadPoolExecutor(max_workers=min(max_workers, len(unique_pages))) as pool:
         page_results = pool.map(
@@ -474,6 +476,12 @@ def main():
                 "total": stats["total"],
                 "domains": {d: c for d, c in sorted_domains},
             }
+        elif doc_type == "sphinx":
+            print(
+                "Error: could not resolve Sphinx inventory for --stats",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         elif doc_type == "doxygen":
             index_url = library.get("index_url", MODULES_URL)
             top_groups = get_all_groups(index_url, source_name=args.source)
