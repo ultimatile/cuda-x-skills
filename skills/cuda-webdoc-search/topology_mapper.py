@@ -205,53 +205,66 @@ def _resolve_doxygen_domain(page_url, library):
     return default_domain
 
 
-def get_doxygen_members(group_urls, source_name, library=None):
+def _parse_doxygen_page(page_url, source_name, library):
+    """Fetch and parse a single Doxygen group page into member entries."""
+    soup = fetch_soup(page_url, "Doxygen group page")
+    if not soup:
+        return []
+
+    domain = _resolve_doxygen_domain(page_url, library)
+    entries = []
+    for a in soup.find_all("a", href=True):
+        href = str(a["href"])
+        m = _DOXYGEN_MEMBER_RE.match(href)
+        if not m:
+            continue
+        name = _extract_member_name(a)
+        if not name:
+            continue
+        role = _get_section_role(a)
+        entries.append(
+            {
+                "group": name,
+                "url": page_url + href,
+                "role": role,
+                "domain": domain,
+                "source": source_name,
+            }
+        )
+    return entries
+
+
+def get_doxygen_members(group_urls, source_name, library=None, max_workers=4):
     """Discover member-level entries from Doxygen group pages.
 
-    Fetches each group page and extracts same-page anchor links that point to
-    individual Doxygen member anchors (functions, typedefs, enums, defines,
-    variables). Returns entries with inferred role and domain metadata.
+    Fetches group pages in parallel and extracts Doxygen member anchors
+    (functions, typedefs, enums, defines, variables). Returns entries
+    with inferred role and domain metadata.
     """
+    from concurrent.futures import ThreadPoolExecutor
+
     if library is None:
         library = {}
+
+    # Deduplicate page URLs (strip fragment)
+    unique_pages = list(dict.fromkeys(url.split("#")[0] for url in group_urls))
+    if not unique_pages:
+        return []
+
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(unique_pages))) as pool:
+        page_results = pool.map(
+            lambda url: _parse_doxygen_page(url, source_name, library),
+            unique_pages,
+        )
+
+    # Flatten and deduplicate by URL
     members = []
     seen = set()
-    fetched_pages = set()
-    for group_url in group_urls:
-        page_url = group_url.split("#")[0]
-        if page_url in fetched_pages:
-            continue
-        fetched_pages.add(page_url)
-
-        soup = fetch_soup(page_url, "Doxygen group page")
-        if not soup:
-            continue
-
-        domain = _resolve_doxygen_domain(page_url, library)
-
-        for a in soup.find_all("a", href=True):
-            href = str(a["href"])
-            m = _DOXYGEN_MEMBER_RE.match(href)
-            if not m:
-                continue
-            full_url = page_url + href
-            if full_url in seen:
-                continue
-            seen.add(full_url)
-
-            name = _extract_member_name(a)
-            if not name:
-                continue
-            role = _get_section_role(a)
-            members.append(
-                {
-                    "group": name,
-                    "url": full_url,
-                    "role": role,
-                    "domain": domain,
-                    "source": source_name,
-                }
-            )
+    for entries in page_results:
+        for entry in entries:
+            if entry["url"] not in seen:
+                seen.add(entry["url"])
+                members.append(entry)
     return members
 
 
@@ -456,7 +469,6 @@ def main():
     if args.stats:
         if inv_url:
             stats = get_inventory_stats(inv_url)
-            # Sort domains by count descending
             sorted_domains = sorted(stats["domains"].items(), key=lambda x: -x[1])
             output = {
                 "source": args.source,
@@ -464,13 +476,36 @@ def main():
                 "total": stats["total"],
                 "domains": {d: c for d, c in sorted_domains},
             }
-            print(json.dumps(output, indent=2))
-        else:
+        elif doc_type == "sphinx":
             print(
-                "Error: --stats requires a sphinx source with valid inventory",
+                "Error: could not resolve Sphinx inventory for --stats",
                 file=sys.stderr,
             )
             sys.exit(1)
+        elif doc_type == "doxygen":
+            index_url = library.get("index_url", MODULES_URL)
+            top_groups = get_all_groups(index_url, source_name=args.source)
+            group_urls = [g["url"] for g in top_groups]
+            members = get_doxygen_members(
+                group_urls, source_name=args.source, library=library
+            )
+            domains = {}
+            for m in members:
+                d = m.get("domain", "")
+                domains[d] = domains.get(d, 0) + 1
+            sorted_domains = sorted(domains.items(), key=lambda x: -x[1])
+            output = {
+                "source": args.source,
+                "total": len(members),
+                "domains": {d: c for d, c in sorted_domains},
+            }
+        else:
+            print(
+                f"Error: --stats is not supported for doc_type '{doc_type}'",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        print(json.dumps(output, indent=2))
         return
 
     # 1. Gather all candidates
