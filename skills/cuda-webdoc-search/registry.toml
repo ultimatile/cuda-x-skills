@@ -103,6 +103,17 @@ inventory_urls = [
 base_urls = ["https://docs.nvidia.com/deeplearning/tensorrt/latest/"]
 
 [[library]]
+name = "dali"
+description = "GPU-accelerated data loading and augmentation for deep learning"
+doc_type = "sphinx"
+inventory_urls = [
+  "https://docs.nvidia.com/deeplearning/dali/user-guide/docs/objects.inv",
+  "https://docs.nvidia.com/deeplearning/dali/objects.inv",
+]
+base_urls = ["https://docs.nvidia.com/deeplearning/dali/user-guide/docs/"]
+repo = "https://github.com/NVIDIA/DALI"
+
+[[library]]
 name = "nccl"
 description = "Multi-GPU, multi-node communication primitives"
 doc_type = "sphinx"
@@ -111,6 +122,20 @@ inventory_urls = [
 ]
 base_urls = ["https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/"]
 repo = "https://github.com/NVIDIA/nccl"
+
+[[library]]
+name = "nvcomp"
+description = "GPU-accelerated lossless data compression and decompression"
+doc_type = "sphinx"
+inventory_urls = ["https://docs.nvidia.com/cuda/nvcomp/objects.inv"]
+base_urls = ["https://docs.nvidia.com/cuda/nvcomp/"]
+
+[[library]]
+name = "nvimagecodec"
+description = "GPU-accelerated image codec library with unified interface"
+doc_type = "sphinx"
+inventory_urls = ["https://docs.nvidia.com/cuda/nvimagecodec/objects.inv"]
+base_urls = ["https://docs.nvidia.com/cuda/nvimagecodec/"]
 
 [[library]]
 name = "cutensor"
