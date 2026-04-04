@@ -513,6 +513,7 @@ class GatherResult:
     canonical_source: str
     groups: list = field(default_factory=list)
     skipped_reason: str | None = None
+    doc_url: str | None = None
     warnings: list = field(default_factory=list)
 
 
@@ -559,6 +560,7 @@ def gather_groups_for_source(requested_source, library, domains_filter):
         genindex_url = urljoin(index_url.rstrip("/") + "/", "genindex.html")
         all_groups = get_genindex_entries(genindex_url, source_name)
         if not all_groups:
+            result.doc_url = index_url
             result.warnings.append(
                 f"'{requested_source}' ({doc_type}): no genindex available, skipping"
             )
@@ -569,6 +571,7 @@ def gather_groups_for_source(requested_source, library, domains_filter):
         result.groups = all_groups
 
     elif doc_type == "pdf":
+        result.doc_url = library.get("doc_url") or library.get("index_url", "")
         result.warnings.append(
             f"'{requested_source}' (pdf) does not support symbol search, skipping"
         )
@@ -579,6 +582,11 @@ def gather_groups_for_source(requested_source, library, domains_filter):
             f"'{requested_source}': unsupported doc_type '{doc_type}', skipping"
         )
         result.skipped_reason = f"unsupported doc_type: {doc_type}"
+
+    # Normalize source field to requested name for consistent output
+    if requested_source != source_name:
+        for g in result.groups:
+            g["source"] = requested_source
 
     return result
 
@@ -939,6 +947,14 @@ def _main_multi_source(args, registry, domains_filter):
             "domains_filter": args.domains,
             "candidates": candidates,
         }
+        # Include browse URLs for skipped sources so users can still reach docs
+        skipped = {
+            gr.requested_source: gr.doc_url
+            for gr in gather_results
+            if gr.skipped_reason and gr.doc_url
+        }
+        if skipped:
+            output["skipped_sources"] = skipped
         print(json.dumps(output, indent=2))
 
 
