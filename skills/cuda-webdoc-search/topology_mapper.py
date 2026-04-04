@@ -529,6 +529,19 @@ def gather_groups_for_source(requested_source, library, domains_filter):
         requested_source=requested_source, canonical_source=source_name
     )
 
+    try:
+        return _gather_groups_impl(result, library, doc_type, domains_filter)
+    except Exception as e:
+        result.warnings.append(f"'{requested_source}': fetch failed ({e}), skipping")
+        result.skipped_reason = "fetch error"
+        return result
+
+
+def _gather_groups_impl(result, library, doc_type, domains_filter):
+    """Inner implementation of gather — separated so caller can catch exceptions."""
+    requested_source = result.requested_source
+    source_name = result.canonical_source
+
     if doc_type == "sphinx":
         inventory_urls = library.get("inventory_urls", [])
         base_urls = library.get("base_urls", [])
