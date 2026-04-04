@@ -2,17 +2,9 @@
 
 import pytest
 
-from topology_mapper import (
-    _parse_query_groups,
-    _score_entry,
-    _tokenize_name,
-    filter_groups,
-    format_list_row,
-    get_doxygen_members,
-    get_genindex_entries,
-    get_library_config,
-    parse_domains,
-)
+from fetchers import get_doxygen_members, get_genindex_entries
+from scoring import _parse_query_groups, _score_entry, _tokenize_name, filter_groups
+from topology_mapper import format_list_row, get_library_config, parse_domains
 
 
 # -- _tokenize_name ----------------------------------------------------------
@@ -585,12 +577,12 @@ class TestGetGenindexEntries:
         """Mock fetch_soup to return sample HTML without network access."""
         from bs4 import BeautifulSoup
 
-        import topology_mapper
+        import fetchers
 
         def _fake_fetch(url, description=""):
             return BeautifulSoup(SAMPLE_GENINDEX_HTML, "html.parser")
 
-        monkeypatch.setattr(topology_mapper, "fetch_soup", _fake_fetch)
+        monkeypatch.setattr(fetchers, "fetch_soup", _fake_fetch)
 
     def test_parses_all_entries(self):
         entries = get_genindex_entries("https://example.com/genindex.html", "cutensor")
@@ -635,10 +627,10 @@ class TestGetGenindexEntries:
     def test_empty_page(self, monkeypatch):
         from bs4 import BeautifulSoup
 
-        import topology_mapper
+        import fetchers as fetchers_mod
 
         monkeypatch.setattr(
-            topology_mapper,
+            fetchers_mod,
             "fetch_soup",
             lambda url, desc="": BeautifulSoup("<html></html>", "html.parser"),
         )
@@ -646,9 +638,9 @@ class TestGetGenindexEntries:
         assert entries == []
 
     def test_fetch_failure(self, monkeypatch):
-        import topology_mapper
+        import fetchers as fetchers_mod
 
-        monkeypatch.setattr(topology_mapper, "fetch_soup", lambda url, desc="": None)
+        monkeypatch.setattr(fetchers_mod, "fetch_soup", lambda url, desc="": None)
         entries = get_genindex_entries("https://example.com/genindex.html", "cutensor")
         assert entries == []
 
@@ -712,12 +704,12 @@ class TestGetDoxygenMembers:
     def mock_fetch(self, monkeypatch):
         from bs4 import BeautifulSoup
 
-        import topology_mapper
+        import fetchers
 
         def _fake_fetch(url, description=""):
             return BeautifulSoup(SAMPLE_DOXYGEN_HTML, "html.parser")
 
-        monkeypatch.setattr(topology_mapper, "fetch_soup", _fake_fetch)
+        monkeypatch.setattr(fetchers, "fetch_soup", _fake_fetch)
 
     def test_extracts_all_members(self):
         members = get_doxygen_members(
@@ -804,9 +796,9 @@ class TestGetDoxygenMembers:
         assert len(members) == 5
 
     def test_fetch_failure(self, monkeypatch):
-        import topology_mapper
+        import fetchers as fetchers_mod
 
-        monkeypatch.setattr(topology_mapper, "fetch_soup", lambda url, desc="": None)
+        monkeypatch.setattr(fetchers_mod, "fetch_soup", lambda url, desc="": None)
         members = get_doxygen_members(
             ["https://example.com/group__X.html"], "cuda_runtime"
         )
