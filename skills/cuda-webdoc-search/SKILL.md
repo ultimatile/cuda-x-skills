@@ -77,6 +77,18 @@ uv run topology_mapper.py --source cuquantum --domains cpp --keywords 'SVD | QR'
 # Returns: entries matching SVD OR QR
 ```
 
+### Search across multiple libraries
+
+```bash
+# "Where is SVD in CUDA-X?" — search cuSOLVER and cuDSS together
+uv run topology_mapper.py --source cusolver cudss --keywords svd --fuzzy --limit 10
+
+# Mix any number of sources
+uv run topology_mapper.py --source cusolver cusparse cudss --keywords solve --fuzzy
+```
+
+Multi-source output uses `"sources"` (list) instead of `"source"` (string), and `"total_found"` becomes a per-source dict.
+
 ### Find GEMM functions in cuBLAS
 
 ```bash
@@ -126,10 +138,17 @@ Parameters { ... }
 
 JSON output includes:
 
-- `source`: Library name
+Single source:
+- `source`: Library name (string)
 - `total_found`: Total APIs in filtered domains
 - `filtered_count`: APIs matching keywords
 - `candidates`: List of matching APIs with `group` (name), `url`, `domain`, `role`
+
+Multi-source (`--source A B`):
+- `sources`: Library names (list)
+- `total_found`: Per-source totals (dict)
+- `filtered_count`: Total APIs matching keywords across all sources
+- `candidates`: Merged list (k-way merge by score if `--fuzzy`, else concatenated)
 
 ### structure_extractor.py
 

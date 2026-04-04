@@ -1060,3 +1060,162 @@ class TestThresholdResolution:
         """Falls back to 60.0 when neither CLI nor registry specify threshold."""
         run_mapper(["--source", "cublas", "--keywords", "mem", "--fuzzy", "--list"])
         assert capture_threshold["threshold"] == 60.0
+
+
+# -- Multi-source tests -------------------------------------------------------
+
+
+class TestMultiSource:
+    """Test multi-source search behavior."""
+
+    @pytest.fixture
+    def run_mapper(self):
+        """Run topology_mapper.main() with given args and capture stdout/stderr."""
+        import io
+        from unittest.mock import patch
+
+        from topology_mapper import main
+
+        def _run(args):
+            # Default --limit to keep tests bounded when hitting live sources
+            normalized = list(args)
+            if "--limit" not in normalized:
+                normalized.extend(["--limit", "5"])
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with (
+                patch("sys.argv", ["topology_mapper.py"] + normalized),
+                patch("sys.stdout", stdout),
+                patch("sys.stderr", stderr),
+            ):
+                try:
+                    main()
+                except SystemExit as e:
+                    if e.code not in (0, None):
+                        raise
+            return stdout.getvalue(), stderr.getvalue()
+
+        return _run
+
+    def test_multi_source_json_has_sources_field(self, run_mapper):
+        """Multi-source output uses 'sources' (list) instead of 'source' (string)."""
+        import json
+
+        out, _ = run_mapper(["--source", "cccl", "cublas"])
+        data = json.loads(out)
+        assert "sources" in data
+        assert isinstance(data["sources"], list)
+        assert "cccl" in data["sources"]
+        assert "cublas" in data["sources"]
+        # No singular 'source' key in multi-source mode
+        assert "source" not in data
+
+    def test_single_source_preserves_source_string(self, run_mapper):
+        """Single source still uses 'source' (string), not 'sources'."""
+        import json
+
+        out, _ = run_mapper(["--source", "cccl"])
+        data = json.loads(out)
+        assert "source" in data
+        assert isinstance(data["source"], str)
+        assert "sources" not in data
+
+    def test_multi_source_total_found_per_source(self, run_mapper):
+        """total_found is a per-source dict in multi-source mode."""
+        import json
+
+        out, _ = run_mapper(["--source", "cccl", "cublas"])
+        data = json.loads(out)
+        assert isinstance(data["total_found"], dict)
+        assert "cccl" in data["total_found"]
+        assert "cublas" in data["total_found"]
+
+    def test_multi_source_candidates_have_source_field(self, run_mapper):
+        """Each candidate has a 'source' field identifying its origin."""
+        import json
+
+        out, _ = run_mapper(["--source", "cccl", "cublas"])
+        data = json.loads(out)
+        for c in data["candidates"]:
+            assert "source" in c
+
+    def test_multi_source_pdf_warning(self, run_mapper):
+        """PDF source in multi-source emits warning on stderr, other results proceed."""
+        import json
+
+        out, err = run_mapper(["--source", "cccl", "amgx"])
+        data = json.loads(out)
+        assert "amgx" in err.lower() or "pdf" in err.lower()
+        # cccl results should still be present
+        assert data["total_found"]["cccl"] > 0
+
+    def test_multi_source_unknown_source_fails_fast(self):
+        """Unknown source in multi-source list causes immediate error."""
+        import io
+        from unittest.mock import patch
+
+        from topology_mapper import main
+
+        with pytest.raises(SystemExit):
+            with (
+                patch(
+                    "sys.argv",
+                    ["topology_mapper.py", "--source", "cccl", "nonexistent"],
+                ),
+                patch("sys.stdout", io.StringIO()),
+                patch("sys.stderr", io.StringIO()),
+            ):
+                main()
+
+    def test_multi_source_alias_dedup(self, run_mapper):
+        """--source cccl thrust dedupes to single fetch (both resolve to cccl)."""
+        import json
+
+        out, _ = run_mapper(["--source", "cccl", "thrust"])
+        data = json.loads(out)
+        # Alias dedup: only one source entry (first requested name) in sources list
+        assert data["sources"] == ["cccl"]
+        assert "cccl" in data["total_found"]
+        assert len(data["total_found"]) == 1
+
+    def test_multi_source_stats_error(self):
+        """--stats with multiple sources causes an argparse error."""
+        import io
+        from unittest.mock import patch
+
+        from topology_mapper import main
+
+        with pytest.raises(SystemExit):
+            with (
+                patch(
+                    "sys.argv",
+                    [
+                        "topology_mapper.py",
+                        "--source",
+                        "cccl",
+                        "cublas",
+                        "--stats",
+                    ],
+                ),
+                patch("sys.stdout", io.StringIO()),
+                patch("sys.stderr", io.StringIO()),
+            ):
+                main()
+
+    def test_multi_source_limit(self, run_mapper):
+        """--limit applies to merged results across all sources."""
+        import json
+
+        out, _ = run_mapper(["--source", "cccl", "cublas", "--limit", "3"])
+        data = json.loads(out)
+        assert len(data["candidates"]) <= 3
+
+    def test_multi_source_list_mode(self, run_mapper):
+        """--list mode works with multi-source results."""
+        out, _ = run_mapper(["--source", "cccl", "cublas", "--list"])
+        lines = [line for line in out.strip().split("\n") if line]
+        assert len(lines) > 0
+        # Each line should be TSV with at least 5 fields
+        for line in lines:
+            fields = line.split("\t")
+            assert len(fields) >= 5
