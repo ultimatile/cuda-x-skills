@@ -939,6 +939,15 @@ def _main_multi_source(args, registry, domains_filter):
                     matched_keyword=c.get("matched_keyword", ""),
                 )
             )
+        # Emit fallback rows for skipped sources so fzf users can still reach docs
+        for gr in gather_results:
+            if gr.skipped_reason and gr.doc_url:
+                label = (
+                    "[PDF manual]"
+                    if gr.skipped_reason == "pdf"
+                    else "[docs (no inventory)]"
+                )
+                print(format_list_row(label, gr.doc_url, source=gr.requested_source))
     else:
         output = {
             "sources": requested_sources,
