@@ -1077,10 +1077,14 @@ class TestMultiSource:
         from topology_mapper import main
 
         def _run(args):
+            # Default --limit to keep tests bounded when hitting live sources
+            normalized = list(args)
+            if "--limit" not in normalized:
+                normalized.extend(["--limit", "5"])
             stdout = io.StringIO()
             stderr = io.StringIO()
             with (
-                patch("sys.argv", ["topology_mapper.py"] + args),
+                patch("sys.argv", ["topology_mapper.py"] + normalized),
                 patch("sys.stdout", stdout),
                 patch("sys.stderr", stderr),
             ):

@@ -521,7 +521,8 @@ def gather_groups_for_source(requested_source, library, domains_filter):
     """Gather all searchable groups from a single library source.
 
     Returns a GatherResult with groups and any warnings.
-    Does not print to stderr — caller is responsible for warning output.
+    This function records warnings on the result for the caller to handle,
+    but underlying helper functions may still emit errors to stderr.
     """
     source_name = library["name"]
     doc_type = library.get("doc_type")
