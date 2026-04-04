@@ -15,6 +15,10 @@ import json
 import sys
 import argparse
 import os
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from heapq import merge as heapq_merge
+from itertools import chain, islice
 from urllib.parse import urljoin
 from rapidfuzz import fuzz
 
@@ -501,6 +505,84 @@ def get_library_config(registry, name):
     return None
 
 
+@dataclass
+class GatherResult:
+    """Result of gathering groups from a single source."""
+
+    requested_source: str
+    canonical_source: str
+    groups: list = field(default_factory=list)
+    skipped_reason: str | None = None
+    warnings: list = field(default_factory=list)
+
+
+def gather_groups_for_source(requested_source, library, domains_filter):
+    """Gather all searchable groups from a single library source.
+
+    Returns a GatherResult with groups and any warnings.
+    Does not print to stderr — caller is responsible for warning output.
+    """
+    source_name = library["name"]
+    doc_type = library.get("doc_type")
+    result = GatherResult(
+        requested_source=requested_source, canonical_source=source_name
+    )
+
+    if doc_type == "sphinx":
+        inventory_urls = library.get("inventory_urls", [])
+        base_urls = library.get("base_urls", [])
+        env_override = os.getenv("CCCL_INV_URL") if library["name"] == "cccl" else None
+        inv_url = resolve_inventory_url(
+            inventory_urls, base_urls, env_override=env_override
+        )
+        if not inv_url:
+            result.warnings.append(
+                f"'{requested_source}': no valid objects.inv found, skipping"
+            )
+            result.skipped_reason = "no inventory"
+            return result
+        result.groups = get_sphinx_groups(inv_url, source_name, domains_filter)
+
+    elif doc_type == "doxygen":
+        index_url = library.get("index_url", MODULES_URL)
+        top_groups = get_all_groups(index_url, source_name=source_name)
+        group_urls = [g["url"] for g in top_groups]
+        members = get_doxygen_members(
+            group_urls, source_name=source_name, library=library
+        )
+        if domains_filter is not None:
+            members = [m for m in members if m.get("domain") in domains_filter]
+        result.groups = top_groups + members
+
+    elif doc_type == "sphinx_noinv":
+        index_url = library.get("index_url", "")
+        genindex_url = urljoin(index_url.rstrip("/") + "/", "genindex.html")
+        all_groups = get_genindex_entries(genindex_url, source_name)
+        if not all_groups:
+            result.warnings.append(
+                f"'{requested_source}' ({doc_type}): no genindex available, skipping"
+            )
+            result.skipped_reason = "no genindex"
+            return result
+        if domains_filter is not None:
+            all_groups = [g for g in all_groups if g.get("domain") in domains_filter]
+        result.groups = all_groups
+
+    elif doc_type == "pdf":
+        result.warnings.append(
+            f"'{requested_source}' (pdf) does not support symbol search, skipping"
+        )
+        result.skipped_reason = "pdf"
+
+    else:
+        result.warnings.append(
+            f"'{requested_source}': unsupported doc_type '{doc_type}', skipping"
+        )
+        result.skipped_reason = f"unsupported doc_type: {doc_type}"
+
+    return result
+
+
 def parse_domains(domains_str):
     """Parse comma-separated domain string into a set.
 
@@ -545,7 +627,12 @@ def main():
         default=None,
         help="Fuzzy match threshold (0-100); defaults to registry match_threshold or 60.0",
     )
-    parser.add_argument("--source", default="cuda_runtime", help="Documentation source")
+    parser.add_argument(
+        "--source",
+        nargs="+",
+        default=["cuda_runtime"],
+        help="Documentation source(s). Specify multiple to search across libraries.",
+    )
     parser.add_argument(
         "--registry", default=DEFAULT_REGISTRY_PATH, help="Registry TOML path"
     )
@@ -569,6 +656,8 @@ def main():
     args = parser.parse_args()
     if args.limit is not None and args.limit < 1:
         parser.error("--limit must be >= 1")
+    if args.stats and len(args.source) > 1:
+        parser.error("--stats requires a single --source")
     domains_filter = parse_domains(args.domains)
 
     registry = load_registry(args.registry)
@@ -576,9 +665,20 @@ def main():
         print(f"Error: {registry}", file=sys.stderr)
         sys.exit(1)
 
-    library = get_library_config(registry, args.source)
+    # --- Single-source path (preserves existing behavior exactly) ---
+    if len(args.source) == 1:
+        _main_single_source(args, registry, domains_filter)
+    else:
+        _main_multi_source(args, registry, domains_filter)
+
+
+def _main_single_source(args, registry, domains_filter):
+    """Original single-source path — kept unchanged for backward compatibility."""
+    source = args.source[0]
+
+    library = get_library_config(registry, source)
     if not library:
-        print(f"Error: source '{args.source}' not found in registry", file=sys.stderr)
+        print(f"Error: source '{source}' not found in registry", file=sys.stderr)
         sys.exit(1)
 
     # Resolve fuzzy threshold: CLI flag > registry match_threshold > 60.0
@@ -591,7 +691,6 @@ def main():
     if doc_type == "sphinx":
         inventory_urls = library.get("inventory_urls", [])
         base_urls = library.get("base_urls", [])
-        # Use resolved library name for env override (handles aliases like thrust → cccl)
         env_override = os.getenv("CCCL_INV_URL") if library["name"] == "cccl" else None
         inv_url = resolve_inventory_url(
             inventory_urls, base_urls, env_override=env_override
@@ -603,7 +702,7 @@ def main():
             stats = get_inventory_stats(inv_url)
             sorted_domains = sorted(stats["domains"].items(), key=lambda x: -x[1])
             output = {
-                "source": args.source,
+                "source": source,
                 "inventory_url": inv_url,
                 "total": stats["total"],
                 "domains": {d: c for d, c in sorted_domains},
@@ -616,10 +715,10 @@ def main():
             sys.exit(1)
         elif doc_type == "doxygen":
             index_url = library.get("index_url", MODULES_URL)
-            top_groups = get_all_groups(index_url, source_name=args.source)
+            top_groups = get_all_groups(index_url, source_name=source)
             group_urls = [g["url"] for g in top_groups]
             members = get_doxygen_members(
-                group_urls, source_name=args.source, library=library
+                group_urls, source_name=source, library=library
             )
             domains = {}
             for m in members:
@@ -627,7 +726,7 @@ def main():
                 domains[d] = domains.get(d, 0) + 1
             sorted_domains = sorted(domains.items(), key=lambda x: -x[1])
             output = {
-                "source": args.source,
+                "source": source,
                 "total": len(members),
                 "domains": {d: c for d, c in sorted_domains},
             }
@@ -649,37 +748,31 @@ def main():
             )
             all_groups = []
         else:
-            all_groups = get_sphinx_groups(inv_url, args.source, domains_filter)
+            all_groups = get_sphinx_groups(inv_url, source, domains_filter)
     elif doc_type == "doxygen":
         index_url = library.get("index_url", MODULES_URL)
-        top_groups = get_all_groups(index_url, source_name=args.source)
+        top_groups = get_all_groups(index_url, source_name=source)
         group_urls = [g["url"] for g in top_groups]
-        members = get_doxygen_members(
-            group_urls, source_name=args.source, library=library
-        )
+        members = get_doxygen_members(group_urls, source_name=source, library=library)
         if domains_filter is not None:
             members = [m for m in members if m.get("domain") in domains_filter]
         all_groups = top_groups + members
     elif doc_type == "sphinx_noinv":
-        # Try genindex.html as synthetic inventory fallback
         index_url = library.get("index_url", "")
         genindex_url = urljoin(index_url.rstrip("/") + "/", "genindex.html")
-        # Fetch without domain filter first to distinguish "genindex unavailable"
-        # from "genindex exists but no entries match the requested domain"
-        all_groups = get_genindex_entries(genindex_url, args.source)
+        all_groups = get_genindex_entries(genindex_url, source)
         if not all_groups:
-            # genindex unavailable or empty — fall back to manual guidance
             doc_url = index_url
             label = "docs (no inventory)"
             message = (
-                f"'{args.source}' has no Sphinx inventory for symbol search. "
+                f"'{source}' has no Sphinx inventory for symbol search. "
                 "Browse the documentation directly."
             )
             if args.list:
-                print(format_list_row(f"[{label}]", doc_url, source=args.source))
+                print(format_list_row(f"[{label}]", doc_url, source=source))
             else:
                 output = {
-                    "source": args.source,
+                    "source": source,
                     "total_found": 0,
                     "filtered_count": 0,
                     "domains_filter": args.domains,
@@ -690,22 +783,21 @@ def main():
                 }
                 print(json.dumps(output, indent=2))
             return
-        # Apply domain filter after confirming genindex exists
         if domains_filter is not None:
             all_groups = [g for g in all_groups if g.get("domain") in domains_filter]
     elif doc_type == "pdf":
         doc_url = library.get("doc_url") or library.get("index_url", "")
         label = "PDF manual"
         message = (
-            f"'{args.source}' is distributed as a PDF manual only. "
+            f"'{source}' is distributed as a PDF manual only. "
             "Symbol search is not available. "
             "Download the PDF to read the documentation."
         )
         if args.list:
-            print(format_list_row(f"[{label}]", doc_url, source=args.source))
+            print(format_list_row(f"[{label}]", doc_url, source=source))
         else:
             output = {
-                "source": args.source,
+                "source": source,
                 "total_found": 0,
                 "filtered_count": 0,
                 "domains_filter": args.domains,
@@ -718,7 +810,7 @@ def main():
         return
     else:
         print(
-            f"Error: unsupported doc_type '{doc_type}' for source '{args.source}'",
+            f"Error: unsupported doc_type '{doc_type}' for source '{source}'",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -751,8 +843,98 @@ def main():
             )
     else:
         output = {
-            "source": args.source,
+            "source": source,
             "total_found": len(all_groups),
+            "filtered_count": filtered_count,
+            "domains_filter": args.domains,
+            "candidates": candidates,
+        }
+        print(json.dumps(output, indent=2))
+
+
+def _main_multi_source(args, registry, domains_filter):
+    """Multi-source search: parallel fetch, per-source filter, merged output."""
+    # Validate all sources and dedupe by canonical name before fetching
+    seen = {}
+    libraries = []
+    for name in args.source:
+        lib = get_library_config(registry, name)
+        if not lib:
+            print(f"Error: source '{name}' not found in registry", file=sys.stderr)
+            sys.exit(1)
+        canonical = lib["name"]
+        if canonical not in seen:
+            seen[canonical] = name
+            libraries.append((name, lib))
+
+    # Parallel fetch
+    max_workers = min(8, len(libraries))
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        gather_results = list(
+            pool.map(
+                lambda item: gather_groups_for_source(item[0], item[1], domains_filter),
+                libraries,
+            )
+        )
+
+    # Collect warnings and print in source order
+    for gr in gather_results:
+        for w in gr.warnings:
+            print(f"Warning: {w}", file=sys.stderr)
+
+    # Per-source filtering with per-source threshold
+    per_source_filtered = []
+    total_found_per_source = {}
+    for gr in gather_results:
+        total_found_per_source[gr.requested_source] = len(gr.groups)
+        if gr.skipped_reason:
+            continue
+        if args.keywords:
+            threshold = args.threshold
+            if threshold is None:
+                lib = get_library_config(registry, gr.canonical_source)
+                threshold = lib.get("match_threshold", 60.0) if lib else 60.0
+            filtered = filter_groups(
+                gr.groups,
+                args.keywords,
+                use_fuzzy=args.fuzzy,
+                threshold=threshold,
+            )
+        else:
+            filtered = gr.groups
+        per_source_filtered.append(filtered)
+
+    # Merge: k-way merge for fuzzy (score-sorted), concatenation for non-fuzzy
+    if args.fuzzy and args.keywords:
+        merged = heapq_merge(*per_source_filtered, key=lambda g: -g.get("score", 0))
+    else:
+        merged = chain(*per_source_filtered)
+
+    filtered_count = sum(len(r) for r in per_source_filtered)
+    if args.limit is not None:
+        candidates = list(islice(merged, args.limit))
+    else:
+        candidates = list(merged)
+
+    # Output
+    requested_sources = [gr.requested_source for gr in gather_results]
+    if args.list:
+        for c in candidates:
+            print(
+                format_list_row(
+                    c["group"],
+                    c["url"],
+                    role=c.get("role", ""),
+                    domain=c.get("domain", ""),
+                    source=c.get("source", ""),
+                    score=c.get("score"),
+                    matched_keyword=c.get("matched_keyword", ""),
+                )
+            )
+    else:
+        output = {
+            "sources": requested_sources,
+            "total_found": total_found_per_source,
             "filtered_count": filtered_count,
             "domains_filter": args.domains,
             "candidates": candidates,
