@@ -9,6 +9,18 @@ description: Search CUDA-X library documentation (cuBLAS, cuTENSOR, cuTensorNet,
 
 Search and discover APIs across CUDA-X library documentation by querying Sphinx inventory files. Use this skill when you need to find specific CUDA library functions, check available APIs, or get documentation links.
 
+## Setup
+
+```bash
+uv tool install "cuda-webdoc-search @ git+https://github.com/ultimatile/cuda-x-skills.git#subdirectory=skills/cuda-webdoc-search"
+```
+
+After installation, `cws` is available as a standalone command. For one-shot usage without installing:
+
+```bash
+uvx --from "cuda-webdoc-search @ git+https://github.com/ultimatile/cuda-x-skills.git#subdirectory=skills/cuda-webdoc-search" cws search cublas --stats
+```
+
 ## When to Use
 
 - Finding CUDA library APIs (e.g., "what SVD functions does cuTensorNet have?")
@@ -23,7 +35,7 @@ Search and discover APIs across CUDA-X library documentation by querying Sphinx 
 Before searching, check what domains (API types) are available:
 
 ```bash
-uv run cws search <library> --stats
+cws search <library> --stats
 ```
 
 This returns domain counts: `cpp` (C++ APIs), `c` (C APIs), `py` (Python bindings), `std` (doc labels).
@@ -31,7 +43,7 @@ This returns domain counts: `cpp` (C++ APIs), `c` (C APIs), `py` (Python binding
 ### Search for APIs
 
 ```bash
-uv run cws search <library> --domains <domain> --keywords "<terms>" --fuzzy --limit 20
+cws search <library> --domains <domain> --keywords "<terms>" --fuzzy --limit 20
 ```
 
 ### Keyword Syntax (fzf subset)
@@ -67,13 +79,13 @@ See `registry.toml` for the full list. Common ones:
 ### Find tensor decomposition APIs in cuTensorNet
 
 ```bash
-uv run cws search cuquantum --stats
+cws search cuquantum --stats
 # Shows: cpp:3179, py:1172, std:3378, c:4
 
-uv run cws search cuquantum --domains cpp --keywords "SVD" --fuzzy --limit 10
+cws search cuquantum --domains cpp --keywords "SVD" --fuzzy --limit 10
 # Returns: cutensornetTensorSVD, etc. (functions ranked above enumerators)
 
-uv run cws search cuquantum --domains cpp --keywords "SVD | QR" --fuzzy
+cws search cuquantum --domains cpp --keywords "SVD | QR" --fuzzy
 # Returns: entries matching SVD OR QR
 ```
 
@@ -81,10 +93,10 @@ uv run cws search cuquantum --domains cpp --keywords "SVD | QR" --fuzzy
 
 ```bash
 # "Where is SVD in CUDA-X?" — search cuSOLVER and cuDSS together
-uv run cws search cusolver cudss --keywords "svd" --fuzzy --limit 10
+cws search cusolver cudss --keywords "svd" --fuzzy --limit 10
 
 # Mix any number of sources
-uv run cws search cusolver cusparse cudss --keywords "solve" --fuzzy
+cws search cusolver cusparse cudss --keywords "solve" --fuzzy
 ```
 
 Multi-source output uses `"sources"` (list) instead of `"source"` (string), and `"total_found"` becomes a per-source dict.
@@ -92,10 +104,10 @@ Multi-source output uses `"sources"` (list) instead of `"source"` (string), and 
 ### Find GEMM functions in cuBLAS
 
 ```bash
-uv run cws search cublas --stats
+cws search cublas --stats
 # Shows: std:36 (only doc labels, no cpp/c domain)
 
-uv run cws search cublas --domains std --keywords "gemm"
+cws search cublas --domains std --keywords "gemm"
 # Returns: cublas-t-gemm, cublas-t-gemmex, etc. (doc section labels)
 ```
 
@@ -104,13 +116,13 @@ uv run cws search cublas --domains std --keywords "gemm"
 After finding a function URL, extract its full documentation:
 
 ```bash
-uv run cws get <url> --section <function_name>
+cws get <url> --section <function_name>
 ```
 
 Example:
 
 ```bash
-uv run cws get \
+cws get \
   "https://docs.nvidia.com/cuda/cuquantum/latest/cutensornet/api/functions.html" \
   --section "cutensornetTensorSVD"
 ```
@@ -135,8 +147,8 @@ Parameters { ... }
 ### Audit registry health
 
 ```bash
-uv run cws audit                    # audit all sources
-uv run cws audit --source cublas    # audit single source
+cws audit                    # audit all sources
+cws audit --source cublas    # audit single source
 ```
 
 ## Output Format
