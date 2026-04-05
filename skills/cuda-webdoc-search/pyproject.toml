@@ -23,4 +23,5 @@ only-include = [
   "fetchers.py",
   "scoring.py",
   "registry.py",
+  "registry.toml",
 ]

@@ -65,8 +65,9 @@ def search(
         Optional[str],
         typer.Option(
             help=(
-                "Filter keywords. Space-separated=AND, '|'=OR. "
-                "Example: --keywords 'SVD | QR'"
+                "Filter keywords (quote the value). "
+                "Space-separated=AND, '|'=OR. "
+                "Examples: --keywords 'SVD batch', --keywords 'SVD | QR'"
             )
         ),
     ] = None,
