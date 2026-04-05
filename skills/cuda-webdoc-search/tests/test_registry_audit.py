@@ -1,4 +1,4 @@
-"""Tests for registry_audit.py — audit dispatch and validation logic."""
+"""Tests for audit.py — audit dispatch and validation logic."""
 
 from audit import audit_library, print_table
 

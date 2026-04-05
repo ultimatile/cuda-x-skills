@@ -94,7 +94,7 @@ def search(
     ] = None,
 ):
     """Discover API groups matching keywords across CUDA-X libraries."""
-    if sources is None:
+    if not sources:
         sources = ["cuda_runtime"]
 
     if limit is not None and limit < 1:
