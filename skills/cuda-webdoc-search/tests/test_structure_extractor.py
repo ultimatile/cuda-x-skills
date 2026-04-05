@@ -1,9 +1,9 @@
-"""Tests for structure_extractor.py — HTML parsing and tree conversion."""
+"""Tests for get.py — HTML parsing and tree conversion."""
 
 import pytest
 from bs4 import BeautifulSoup
 
-from structure_extractor import (
+from get import (
     clean_soup,
     extract_section,
     format_output,

@@ -1,23 +1,15 @@
-# /// script
-# requires-python = ">=3.11"
-# dependencies = [
-#     "requests",
-#     "beautifulsoup4",
-#     "sphobjinv",
-# ]
-# ///
+"""Validate registry entries for endpoint liveness and search viability."""
 
-"""Validate registry entries for endpoint liveness, parseability, and search viability."""
-
-import argparse
 import json
 import sys
+from typing import Annotated, Optional
 
 import requests
 import sphobjinv as soi
+import typer
 from bs4 import BeautifulSoup
 
-from registry import DEFAULT_REGISTRY_PATH, load_registry
+import registry
 
 REQUEST_TIMEOUT = 15
 
@@ -91,7 +83,6 @@ def audit_sphinx(lib):
     """Audit a sphinx library entry."""
     results = {"checks": [], "ok": True}
 
-    # Build candidate list: explicit inventory_urls, then base_urls-derived fallbacks
     candidates = list(lib.get("inventory_urls", []))
     for base_url in lib.get("base_urls", []):
         fallback = base_url.rstrip("/") + "/objects.inv"
@@ -109,7 +100,6 @@ def audit_sphinx(lib):
         results["ok"] = False
         return results
 
-    # Try each candidate until one is both reachable and parseable
     inv_found = False
     for url in candidates:
         if _try_inventory(url, results):
@@ -134,7 +124,6 @@ def audit_doxygen(lib):
         results["ok"] = False
         return results
 
-    # Single fetch for both liveness check and link extraction
     try:
         resp = requests.get(index_url, timeout=REQUEST_TIMEOUT)
     except Exception as e:
@@ -194,12 +183,10 @@ def audit_pdf(lib):
         results["ok"] = False
         return results
 
-    # HEAD request to avoid downloading the full PDF
     try:
         resp = requests.head(doc_url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
         content_type = resp.headers.get("Content-Type", "")
         ok = resp.status_code == 200
-        # Reject HTML responses — a PDF URL returning text/html is likely misconfigured
         if ok and "text/html" in content_type.lower():
             ok = False
             redirect_note = (
@@ -305,65 +292,62 @@ def print_table(results):
         status = "OK" if r["ok"] else "FAIL"
         detail = ""
         if r["ok"]:
-            # Show last successful check detail (the meaningful result)
             for c in reversed(r["checks"]):
                 if c["ok"]:
                     detail = c.get("detail", "")
                     break
         else:
-            # Show first failing check
             for c in r["checks"]:
                 if not c["ok"]:
                     detail = f"{c['check']}: {c['detail']}"
                     break
         if not detail and r["checks"]:
             detail = r["checks"][-1].get("detail", "")
-        # Truncate long details
         if len(detail) > 60:
             detail = detail[:57] + "..."
         print(
-            f"{r['name']:<16} {r['doc_type']:<14} {status:<6} {detail}", file=sys.stderr
+            f"{r['name']:<16} {r['doc_type']:<14} {status:<6} {detail}",
+            file=sys.stderr,
         )
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Audit registry entries for endpoint health."
-    )
-    parser.add_argument(
-        "--registry", default=DEFAULT_REGISTRY_PATH, help="Registry TOML path"
-    )
-    parser.add_argument("--source", help="Audit only this source")
-    parser.add_argument(
-        "--no-table",
-        action="store_true",
-        help="Suppress the human-readable table (JSON is always emitted to stdout)",
-    )
-    args = parser.parse_args()
+def audit(
+    source: Annotated[
+        Optional[str], typer.Option(help="Audit only this source")
+    ] = None,
+    registry_path: Annotated[
+        str,
+        typer.Option("--registry", help="Registry TOML path"),
+    ] = registry.DEFAULT_REGISTRY_PATH,
+    no_table: Annotated[
+        bool,
+        typer.Option(
+            "--no-table",
+            help="Suppress the human-readable table (JSON always to stdout)",
+        ),
+    ] = False,
+):
+    """Audit registry entries for endpoint health."""
+    reg = registry.load_registry(registry_path)
+    if isinstance(reg, str):
+        print(f"Error: {reg}", file=sys.stderr)
+        raise typer.Exit(1)
+    libraries = reg.get("library", [])
 
-    registry = load_registry(args.registry)
-    if isinstance(registry, str):
-        print(f"Error: {registry}", file=sys.stderr)
-        sys.exit(1)
-    libraries = registry.get("library", [])
-
-    if args.source:
-        libraries = [lib for lib in libraries if lib.get("name") == args.source]
+    if source:
+        libraries = [lib for lib in libraries if lib.get("name") == source]
         if not libraries:
-            print(
-                f"Error: source '{args.source}' not found in registry", file=sys.stderr
-            )
-            sys.exit(1)
+            print(f"Error: source '{source}' not found in registry", file=sys.stderr)
+            raise typer.Exit(1)
 
     results = []
     for lib in libraries:
         result = audit_library(lib)
         results.append(result)
 
-    if not args.no_table:
+    if not no_table:
         print_table(results)
 
-    # JSON summary to stdout
     summary = {
         "total": len(results),
         "passed": sum(1 for r in results if r["ok"]),
@@ -372,10 +356,5 @@ def main():
     }
     print(json.dumps(summary, indent=2))
 
-    # Exit code: 1 if any failures
     if summary["failed"] > 0:
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
+        raise typer.Exit(1)

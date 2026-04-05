@@ -1,10 +1,19 @@
-"""Tests for topology_mapper.py — pure logic functions."""
+"""Tests for search — pure logic functions and CLI integration."""
+
+import json
 
 import pytest
+from typer.testing import CliRunner
 
+import fetchers
+import registry
+import scoring
+from cli import app
 from fetchers import get_doxygen_members, get_genindex_entries
 from scoring import _parse_query_groups, _score_entry, _tokenize_name, filter_groups
-from topology_mapper import format_list_row, get_library_config, parse_domains
+from search import format_list_row, get_library_config, parse_domains
+
+_runner = CliRunner()
 
 
 # -- _tokenize_name ----------------------------------------------------------
@@ -28,7 +37,6 @@ class TestTokenizeName:
         assert _tokenize_name("SVD") == ["svd"]
 
     def test_consecutive_upper_then_lower(self):
-        # "cuBLAS" -> ['cu', 'blas'] or similar
         result = _tokenize_name("cuBLAS")
         assert result[-1] == "blas"
 
@@ -59,19 +67,15 @@ class TestScoreEntry:
         assert _score_entry("CUDAMEMCPY", "cudaMemcpy") == 100.0
 
     def test_segment_exact(self):
-        # "svd" matches segment "svd" in "cutensornetTensorSVD"
         assert _score_entry("SVD", "cutensornetTensorSVD") == 97.0
 
     def test_segment_prefix(self):
-        # "mem" matches start of segment "memcpy"
         assert _score_entry("mem", "cudaMemcpy") == 94.0
 
     def test_boundary_contained(self):
-        # "ensor" is a substring but not a segment match
         assert _score_entry("ensor", "cutensornetTensorSVD") == 88.0
 
     def test_fuzzy_capped(self):
-        # Something that doesn't match any tier but fuzzy matches somewhat
         score = _score_entry("mempcy", "cudaMemcpy")
         assert score <= 82.0
 
@@ -84,11 +88,9 @@ class TestScoreEntry:
         assert _score_entry("memcpy", "cudaMemcpy", segments=segs) == 97.0
 
     def test_doxygen_signature_exact(self):
-        # Bare name "cudaFree" should score exact against signature
         assert _score_entry("cudaFree", "cudaFree ( void* devPtr )") == 100.0
 
     def test_doxygen_signature_segment(self):
-        # Segment match against bare name portion of signature
         score = _score_entry("Free", "cudaFree ( void* devPtr )")
         assert score == 97.0
 
@@ -116,7 +118,6 @@ SAMPLE_GROUPS_WITH_ROLES = [
 
 class TestRoleAdjustedScoring:
     def test_function_ranks_above_enumerator(self):
-        """Function with segment-exact SVD should outrank enumerator with segment-exact SVD."""
         result = filter_groups(
             SAMPLE_GROUPS_WITH_ROLES, ["SVD"], use_fuzzy=True, threshold=50.0
         )
@@ -158,13 +159,11 @@ class TestParseQueryGroups:
         assert _parse_query_groups([]) == []
 
     def test_pipe_only(self):
-        """Pipe-only input yields empty groups."""
         assert _parse_query_groups(["|"]) == []
 
 
 class TestFilterGroupsEmptyQuery:
     def test_pipe_only_returns_empty(self):
-        """keywords='|' should return no matches, not all groups."""
         result = filter_groups(SAMPLE_GROUPS, ["|"])
         assert result == []
 
@@ -261,7 +260,6 @@ class TestGetLibraryConfig:
         assert lib["name"] == "cublas"
 
     def test_name_takes_priority_over_tag(self):
-        """Exact name match wins even if another library has a matching tag."""
         lib = get_library_config(SAMPLE_REGISTRY, "cublas")
         assert lib is not None
         assert lib["name"] == "cublas"
@@ -300,20 +298,16 @@ class TestFilterGroupsNonFuzzy:
         assert len(result) == 0
 
     def test_multiple_keywords_and(self):
-        """Space-separated keywords use AND: both must match."""
         result = filter_groups(SAMPLE_GROUPS, ["cuda", "Mem"])
-        # Only cudaMemcpy contains both "cuda" AND "Mem" (cudaMalloc has no "Mem")
         names = {g["group"] for g in result}
         assert names == {"cudaMemcpy"}
 
     def test_multiple_keywords_or(self):
-        """Pipe-separated keywords use OR."""
         result = filter_groups(SAMPLE_GROUPS, ["Memcpy", "|", "Free"])
         names = {g["group"] for g in result}
         assert names == {"cudaMemcpy", "cudaFree"}
 
     def test_or_quoted(self):
-        """Quoted pipe also works."""
         result = filter_groups(SAMPLE_GROUPS, ["Memcpy | Free"])
         names = {g["group"] for g in result}
         assert names == {"cudaMemcpy", "cudaFree"}
@@ -337,7 +331,6 @@ class TestFilterGroupsFuzzy:
         assert all("matched_keyword" in g for g in result)
 
     def test_fuzzy_case_insensitive(self):
-        """Uppercase keywords match mixed-case group names case-insensitively."""
         result = filter_groups(
             SAMPLE_GROUPS, ["MEMCPY"], use_fuzzy=True, threshold=60.0
         )
@@ -362,7 +355,6 @@ class TestFilterGroupsFuzzy:
         assert len(urls) == len(set(urls))
 
     def test_fuzzy_or(self):
-        """Fuzzy OR: 'Memcpy | Free' should match both."""
         result = filter_groups(
             SAMPLE_GROUPS, ["Memcpy", "|", "Free"], use_fuzzy=True, threshold=60.0
         )
@@ -371,7 +363,6 @@ class TestFilterGroupsFuzzy:
         assert "cudaFree" in names
 
     def test_fuzzy_mixed_and_or(self):
-        """Fuzzy mixed: 'cuda Stream | Memcpy' = (cuda AND Stream) OR Memcpy."""
         result = filter_groups(
             SAMPLE_GROUPS,
             ["cuda", "Stream", "|", "Memcpy"],
@@ -413,140 +404,81 @@ LIMIT_TEST_GROUPS = [
 
 class TestLimitOption:
     @pytest.fixture
-    def run_mapper(self, monkeypatch):
-        import io
-        from unittest.mock import patch
-
-        import topology_mapper
-
-        monkeypatch.setattr(topology_mapper, "load_registry", lambda _: SAMPLE_REGISTRY)
+    def run_search(self, monkeypatch):
+        monkeypatch.setattr(registry, "load_registry", lambda _: SAMPLE_REGISTRY)
         monkeypatch.setattr(
-            topology_mapper,
+            fetchers,
             "resolve_inventory_url",
             lambda *a, **kw: "https://example.com/objects.inv",
         )
         monkeypatch.setattr(
-            topology_mapper,
+            fetchers,
             "get_sphinx_groups",
             lambda *a, **kw: LIMIT_TEST_GROUPS,
         )
 
         def _run(args):
-            stdout = io.StringIO()
-            stderr = io.StringIO()
-            with (
-                patch("sys.argv", ["topology_mapper.py"] + args),
-                patch("sys.stdout", stdout),
-                patch("sys.stderr", stderr),
-            ):
-                try:
-                    topology_mapper.main()
-                except SystemExit as e:
-                    if e.code not in (0, None):
-                        raise
-            return stdout.getvalue(), stderr.getvalue()
+            result = _runner.invoke(app, ["search"] + args)
+            if result.exit_code not in (0, None):
+                raise SystemExit(result.exit_code)
+            return result.stdout, result.stderr
 
         return _run
 
-    def test_limit_truncates(self, run_mapper):
-        import json
-
-        out, _ = run_mapper(
-            ["--source", "cccl", "--keywords", "SVD", "--fuzzy", "--limit", "1"]
-        )
+    def test_limit_truncates(self, run_search):
+        out, _ = run_search(["cccl", "--keywords", "SVD", "--fuzzy", "--limit", "1"])
         data = json.loads(out)
-        # candidates truncated but filtered_count reflects pre-limit total
         assert len(data["candidates"]) == 1
         assert data["filtered_count"] >= 1
 
-    def test_filtered_count_preserves_pre_limit(self, run_mapper):
-        import json
-
-        out, _ = run_mapper(["--source", "cccl", "--limit", "1"])
+    def test_filtered_count_preserves_pre_limit(self, run_search):
+        out, _ = run_search(["cccl", "--limit", "1"])
         data = json.loads(out)
         assert len(data["candidates"]) == 1
-        # 3 items in LIMIT_TEST_GROUPS, filtered_count should be 3
         assert data["filtered_count"] == 3
 
     def test_limit_zero_errors(self):
-        """--limit 0 should cause an argparse error."""
-        import io
-        from unittest.mock import patch
-
-        from topology_mapper import main
-
-        with pytest.raises(SystemExit):
-            with (
-                patch(
-                    "sys.argv",
-                    ["topology_mapper.py", "--source", "cccl", "--limit", "0"],
-                ),
-                patch("sys.stdout", io.StringIO()),
-                patch("sys.stderr", io.StringIO()),
-            ):
-                main()
+        result = _runner.invoke(app, ["search", "cccl", "--limit", "0"])
+        assert result.exit_code != 0
 
 
 # -- main() output branches for non-searchable sources ----------------------
 
 
 class TestNonSearchableOutput:
-    """Test that main() handles --list / --keywords combinations for pdf/sphinx_noinv."""
-
     @pytest.fixture
-    def run_mapper(self):
-        """Run topology_mapper.main() with given args and capture stdout/stderr."""
-        import io
-        from unittest.mock import patch
-
-        from topology_mapper import main
-
+    def run_search(self):
         def _run(args):
-            stdout = io.StringIO()
-            stderr = io.StringIO()
-            with (
-                patch("sys.argv", ["topology_mapper.py"] + args),
-                patch("sys.stdout", stdout),
-                patch("sys.stderr", stderr),
-            ):
-                try:
-                    main()
-                except SystemExit as e:
-                    if e.code != 0:
-                        raise
-            return stdout.getvalue(), stderr.getvalue()
+            result = _runner.invoke(app, ["search"] + args)
+            if result.exit_code not in (0, None):
+                raise SystemExit(result.exit_code)
+            return result.stdout, result.stderr
 
         return _run
 
-    def test_list_mode(self, run_mapper):
-        out, _ = run_mapper(["--source", "amgx", "--list"])
+    def test_list_mode(self, run_search):
+        out, _ = run_search(["amgx", "--format", "tsv"])
         assert "[PDF manual]" in out
         assert "AMGX" in out
-        # Fallback rows use same 5-column TSV as normal candidates
         fields = out.strip().split("\t")
         assert len(fields) == 5
         assert fields[4] == "amgx"
 
-    def test_json_mode(self, run_mapper):
-        import json
-
-        out, _ = run_mapper(["--source", "amgx"])
+    def test_json_mode(self, run_search):
+        out, _ = run_search(["amgx"])
         data = json.loads(out)
         assert data["doc_type"] == "pdf"
         assert data["source"] == "amgx"
         assert data["total_found"] == 0
 
-    def test_keywords_json_mode(self, run_mapper):
-        import json
-
-        out, _ = run_mapper(["--source", "amgx", "--keywords", "solver"])
+    def test_keywords_json_mode(self, run_search):
+        out, _ = run_search(["amgx", "--keywords", "solver"])
         data = json.loads(out)
         assert data["doc_type"] == "pdf"
         assert data["filtered_count"] == 0
 
-    def test_keywords_list_mode(self, run_mapper):
-        """Regression: --keywords --list previously produced no output."""
-        out, _ = run_mapper(["--source", "amgx", "--keywords", "solver", "--list"])
+    def test_keywords_list_mode(self, run_search):
+        out, _ = run_search(["amgx", "--keywords", "solver", "--format", "tsv"])
         assert "[PDF manual]" in out
 
 
@@ -574,10 +506,7 @@ SAMPLE_GENINDEX_HTML = """\
 class TestGetGenindexEntries:
     @pytest.fixture(autouse=True)
     def mock_fetch(self, monkeypatch):
-        """Mock fetch_soup to return sample HTML without network access."""
         from bs4 import BeautifulSoup
-
-        import fetchers
 
         def _fake_fetch(url, description=""):
             return BeautifulSoup(SAMPLE_GENINDEX_HTML, "html.parser")
@@ -627,10 +556,8 @@ class TestGetGenindexEntries:
     def test_empty_page(self, monkeypatch):
         from bs4 import BeautifulSoup
 
-        import fetchers as fetchers_mod
-
         monkeypatch.setattr(
-            fetchers_mod,
+            fetchers,
             "fetch_soup",
             lambda url, desc="": BeautifulSoup("<html></html>", "html.parser"),
         )
@@ -638,9 +565,7 @@ class TestGetGenindexEntries:
         assert entries == []
 
     def test_fetch_failure(self, monkeypatch):
-        import fetchers as fetchers_mod
-
-        monkeypatch.setattr(fetchers_mod, "fetch_soup", lambda url, desc="": None)
+        monkeypatch.setattr(fetchers, "fetch_soup", lambda url, desc="": None)
         entries = get_genindex_entries("https://example.com/genindex.html", "cutensor")
         assert entries == []
 
@@ -703,8 +628,6 @@ class TestGetDoxygenMembers:
     @pytest.fixture(autouse=True)
     def mock_fetch(self, monkeypatch):
         from bs4 import BeautifulSoup
-
-        import fetchers
 
         def _fake_fetch(url, description=""):
             return BeautifulSoup(SAMPLE_DOXYGEN_HTML, "html.parser")
@@ -769,7 +692,6 @@ class TestGetDoxygenMembers:
         assert v["role"] == "data"
 
     def test_cpp_group_domain(self):
-        """cpp_groups pattern in URL overrides default_domain."""
         members = get_doxygen_members(
             ["https://example.com/group__CUDART__HIGHLEVEL.html"],
             "cuda_runtime",
@@ -778,7 +700,6 @@ class TestGetDoxygenMembers:
         assert all(m["domain"] == "cpp" for m in members)
 
     def test_no_library_defaults_empty_domain(self):
-        """Without library config, domain falls back to empty string."""
         members = get_doxygen_members(
             ["https://example.com/group__CUDART__MEMORY.html"], "cuda_runtime"
         )
@@ -796,16 +717,14 @@ class TestGetDoxygenMembers:
         assert len(members) == 5
 
     def test_fetch_failure(self, monkeypatch):
-        import fetchers as fetchers_mod
-
-        monkeypatch.setattr(fetchers_mod, "fetch_soup", lambda url, desc="": None)
+        monkeypatch.setattr(fetchers, "fetch_soup", lambda url, desc="": None)
         members = get_doxygen_members(
             ["https://example.com/group__X.html"], "cuda_runtime"
         )
         assert members == []
 
 
-# -- --list TSV output format ------------------------------------------------
+# -- --format tsv output format ------------------------------------------------
 
 
 SPHINX_GROUPS = [
@@ -837,8 +756,6 @@ DOXYGEN_GROUPS = [
 
 
 class TestFormatListRow:
-    """Test the format_list_row helper directly."""
-
     def test_base_fields(self):
         row = format_list_row("cudaMemcpy", "https://ex.com", "function", "cpp", "cccl")
         fields = row.split("\t")
@@ -873,47 +790,28 @@ class TestFormatListRow:
 
 
 class TestListTsvOutput:
-    """Integration tests: --list output through main()."""
-
     @pytest.fixture
-    def run_mapper(self):
-        import io
-        from unittest.mock import patch
-
-        from topology_mapper import main
-
+    def run_search(self):
         def _run(args):
-            stdout = io.StringIO()
-            stderr = io.StringIO()
-            with (
-                patch("sys.argv", ["topology_mapper.py"] + args),
-                patch("sys.stdout", stdout),
-                patch("sys.stderr", stderr),
-            ):
-                try:
-                    main()
-                except SystemExit as e:
-                    if e.code != 0:
-                        raise
-            return stdout.getvalue(), stderr.getvalue()
+            result = _runner.invoke(app, ["search"] + args)
+            if result.exit_code not in (0, None):
+                raise SystemExit(result.exit_code)
+            return result.stdout, result.stderr
 
         return _run
 
-    def test_sphinx_list_fields(self, run_mapper, monkeypatch):
-        """Sphinx --list output has 5 tab-separated fields."""
-        import topology_mapper
-
+    def test_sphinx_list_fields(self, run_search, monkeypatch):
         monkeypatch.setattr(
-            topology_mapper,
+            fetchers,
             "resolve_inventory_url",
             lambda *a, **kw: "https://example.com/objects.inv",
         )
         monkeypatch.setattr(
-            topology_mapper,
+            fetchers,
             "get_sphinx_groups",
             lambda *a, **kw: SPHINX_GROUPS,
         )
-        out, _ = run_mapper(["--source", "cccl", "--keywords", "Memcpy", "--list"])
+        out, _ = run_search(["cccl", "--keywords", "Memcpy", "--format", "tsv"])
         line = out.strip().splitlines()[0]
         fields = line.split("\t")
         assert len(fields) == 5
@@ -921,23 +819,18 @@ class TestListTsvOutput:
         assert fields[3] == "cpp"
         assert fields[4] == "cccl"
 
-    def test_doxygen_list_metadata(self, run_mapper, monkeypatch):
-        """Doxygen --list output includes role/domain from member extraction."""
-        import topology_mapper
-
+    def test_doxygen_list_metadata(self, run_search, monkeypatch):
         monkeypatch.setattr(
-            topology_mapper,
+            fetchers,
             "get_all_groups",
             lambda *a, **kw: [],
         )
         monkeypatch.setattr(
-            topology_mapper,
+            fetchers,
             "get_doxygen_members",
             lambda *a, **kw: DOXYGEN_GROUPS,
         )
-        out, _ = run_mapper(
-            ["--source", "cuda_runtime", "--keywords", "curand", "--list"]
-        )
+        out, _ = run_search(["cuda_runtime", "--keywords", "curand", "--format", "tsv"])
         line = out.strip().splitlines()[0]
         fields = line.split("\t")
         assert len(fields) == 5
@@ -945,22 +838,19 @@ class TestListTsvOutput:
         assert fields[3] == "c"
         assert fields[4] == "curand"
 
-    def test_fuzzy_list_has_score(self, run_mapper, monkeypatch):
-        """Fuzzy --list output appends score and matched_keyword."""
-        import topology_mapper
-
+    def test_fuzzy_list_has_score(self, run_search, monkeypatch):
         monkeypatch.setattr(
-            topology_mapper,
+            fetchers,
             "resolve_inventory_url",
             lambda *a, **kw: "https://example.com/objects.inv",
         )
         monkeypatch.setattr(
-            topology_mapper,
+            fetchers,
             "get_sphinx_groups",
             lambda *a, **kw: SPHINX_GROUPS,
         )
-        out, _ = run_mapper(
-            ["--source", "cccl", "--keywords", "memcpy", "--fuzzy", "--list"]
+        out, _ = run_search(
+            ["cccl", "--keywords", "memcpy", "--fuzzy", "--format", "tsv"]
         )
         line = out.strip().splitlines()[0]
         fields = line.split("\t")
@@ -972,16 +862,11 @@ class TestListTsvOutput:
 
 
 class TestThresholdResolution:
-    """Test that fuzzy threshold resolves as: CLI > registry > 60.0 fallback."""
-
     @pytest.fixture
     def capture_threshold(self, monkeypatch):
-        """Monkeypatch filter_groups to capture the threshold argument."""
-        import topology_mapper
-
         captured = {}
 
-        original_filter = topology_mapper.filter_groups
+        original_filter = scoring.filter_groups
 
         def _capture(*args, **kwargs):
             captured["threshold"] = kwargs.get(
@@ -989,68 +874,51 @@ class TestThresholdResolution:
             )
             return original_filter(*args, **kwargs)
 
-        monkeypatch.setattr(topology_mapper, "filter_groups", _capture)
-        monkeypatch.setattr(topology_mapper, "load_registry", lambda _: SAMPLE_REGISTRY)
+        monkeypatch.setattr(scoring, "filter_groups", _capture)
+        monkeypatch.setattr(registry, "load_registry", lambda _: SAMPLE_REGISTRY)
         monkeypatch.setattr(
-            topology_mapper,
+            fetchers,
             "resolve_inventory_url",
             lambda *a, **kw: "https://example.com/objects.inv",
         )
         monkeypatch.setattr(
-            topology_mapper,
+            fetchers,
             "get_sphinx_groups",
             lambda *a, **kw: SPHINX_GROUPS,
         )
         return captured
 
     @pytest.fixture
-    def run_mapper(self):
-        import io
-        from unittest.mock import patch
-
-        from topology_mapper import main
-
+    def run_search(self):
         def _run(args):
-            stdout = io.StringIO()
-            stderr = io.StringIO()
-            with (
-                patch("sys.argv", ["topology_mapper.py"] + args),
-                patch("sys.stdout", stdout),
-                patch("sys.stderr", stderr),
-            ):
-                try:
-                    main()
-                except SystemExit as e:
-                    if e.code != 0:
-                        raise
-            return stdout.getvalue(), stderr.getvalue()
+            result = _runner.invoke(app, ["search"] + args)
+            if result.exit_code not in (0, None):
+                raise SystemExit(result.exit_code)
+            return result.stdout, result.stderr
 
         return _run
 
-    def test_registry_threshold(self, run_mapper, capture_threshold):
-        """Uses registry match_threshold when CLI --threshold not given."""
-        run_mapper(["--source", "cccl", "--keywords", "mem", "--fuzzy", "--list"])
+    def test_registry_threshold(self, run_search, capture_threshold):
+        run_search(["cccl", "--keywords", "mem", "--fuzzy", "--format", "tsv"])
         assert capture_threshold["threshold"] == 70.0
 
-    def test_cli_overrides_registry(self, run_mapper, capture_threshold):
-        """CLI --threshold takes precedence over registry."""
-        run_mapper(
+    def test_cli_overrides_registry(self, run_search, capture_threshold):
+        run_search(
             [
-                "--source",
                 "cccl",
                 "--keywords",
                 "mem",
                 "--fuzzy",
                 "--threshold",
                 "85",
-                "--list",
+                "--format",
+                "tsv",
             ]
         )
         assert capture_threshold["threshold"] == 85.0
 
-    def test_fallback_default(self, run_mapper, capture_threshold):
-        """Falls back to 60.0 when neither CLI nor registry specify threshold."""
-        run_mapper(["--source", "cublas", "--keywords", "mem", "--fuzzy", "--list"])
+    def test_fallback_default(self, run_search, capture_threshold):
+        run_search(["cublas", "--keywords", "mem", "--fuzzy", "--format", "tsv"])
         assert capture_threshold["threshold"] == 60.0
 
 
@@ -1058,156 +926,78 @@ class TestThresholdResolution:
 
 
 class TestMultiSource:
-    """Test multi-source search behavior."""
-
     @pytest.fixture
-    def run_mapper(self):
-        """Run topology_mapper.main() with given args and capture stdout/stderr."""
-        import io
-        from unittest.mock import patch
-
-        from topology_mapper import main
-
+    def run_search(self):
         def _run(args):
-            # Default --limit to keep tests bounded when hitting live sources
             normalized = list(args)
             if "--limit" not in normalized:
                 normalized.extend(["--limit", "5"])
-            stdout = io.StringIO()
-            stderr = io.StringIO()
-            with (
-                patch("sys.argv", ["topology_mapper.py"] + normalized),
-                patch("sys.stdout", stdout),
-                patch("sys.stderr", stderr),
-            ):
-                try:
-                    main()
-                except SystemExit as e:
-                    if e.code not in (0, None):
-                        raise
-            return stdout.getvalue(), stderr.getvalue()
+            result = _runner.invoke(app, ["search"] + normalized)
+            if result.exit_code not in (0, None):
+                raise SystemExit(result.exit_code)
+            return result.stdout, result.stderr
 
         return _run
 
-    def test_multi_source_json_has_sources_field(self, run_mapper):
-        """Multi-source output uses 'sources' (list) instead of 'source' (string)."""
-        import json
-
-        out, _ = run_mapper(["--source", "cccl", "cublas"])
+    def test_multi_source_json_has_sources_field(self, run_search):
+        out, _ = run_search(["cccl", "cublas"])
         data = json.loads(out)
         assert "sources" in data
         assert isinstance(data["sources"], list)
         assert "cccl" in data["sources"]
         assert "cublas" in data["sources"]
-        # No singular 'source' key in multi-source mode
         assert "source" not in data
 
-    def test_single_source_preserves_source_string(self, run_mapper):
-        """Single source still uses 'source' (string), not 'sources'."""
-        import json
-
-        out, _ = run_mapper(["--source", "cccl"])
+    def test_single_source_preserves_source_string(self, run_search):
+        out, _ = run_search(["cccl"])
         data = json.loads(out)
         assert "source" in data
         assert isinstance(data["source"], str)
         assert "sources" not in data
 
-    def test_multi_source_total_found_per_source(self, run_mapper):
-        """total_found is a per-source dict in multi-source mode."""
-        import json
-
-        out, _ = run_mapper(["--source", "cccl", "cublas"])
+    def test_multi_source_total_found_per_source(self, run_search):
+        out, _ = run_search(["cccl", "cublas"])
         data = json.loads(out)
         assert isinstance(data["total_found"], dict)
         assert "cccl" in data["total_found"]
         assert "cublas" in data["total_found"]
 
-    def test_multi_source_candidates_have_source_field(self, run_mapper):
-        """Each candidate has a 'source' field identifying its origin."""
-        import json
-
-        out, _ = run_mapper(["--source", "cccl", "cublas"])
+    def test_multi_source_candidates_have_source_field(self, run_search):
+        out, _ = run_search(["cccl", "cublas"])
         data = json.loads(out)
         for c in data["candidates"]:
             assert "source" in c
 
-    def test_multi_source_pdf_warning(self, run_mapper):
-        """PDF source in multi-source emits warning on stderr, other results proceed."""
-        import json
-
-        out, err = run_mapper(["--source", "cccl", "amgx"])
+    def test_multi_source_pdf_warning(self, run_search):
+        out, err = run_search(["cccl", "amgx"])
         data = json.loads(out)
         assert "amgx" in err.lower() or "pdf" in err.lower()
-        # cccl results should still be present
         assert data["total_found"]["cccl"] > 0
 
     def test_multi_source_unknown_source_fails_fast(self):
-        """Unknown source in multi-source list causes immediate error."""
-        import io
-        from unittest.mock import patch
+        result = _runner.invoke(app, ["search", "cccl", "nonexistent"])
+        assert result.exit_code != 0
 
-        from topology_mapper import main
-
-        with pytest.raises(SystemExit):
-            with (
-                patch(
-                    "sys.argv",
-                    ["topology_mapper.py", "--source", "cccl", "nonexistent"],
-                ),
-                patch("sys.stdout", io.StringIO()),
-                patch("sys.stderr", io.StringIO()),
-            ):
-                main()
-
-    def test_multi_source_alias_dedup(self, run_mapper):
-        """--source cccl thrust dedupes to single fetch (both resolve to cccl)."""
-        import json
-
-        out, _ = run_mapper(["--source", "cccl", "thrust"])
+    def test_multi_source_alias_dedup(self, run_search):
+        out, _ = run_search(["cccl", "thrust"])
         data = json.loads(out)
-        # Alias dedup: only one source entry (first requested name) in sources list
         assert data["sources"] == ["cccl"]
         assert "cccl" in data["total_found"]
         assert len(data["total_found"]) == 1
 
     def test_multi_source_stats_error(self):
-        """--stats with multiple sources causes an argparse error."""
-        import io
-        from unittest.mock import patch
+        result = _runner.invoke(app, ["search", "cccl", "cublas", "--stats"])
+        assert result.exit_code != 0
 
-        from topology_mapper import main
-
-        with pytest.raises(SystemExit):
-            with (
-                patch(
-                    "sys.argv",
-                    [
-                        "topology_mapper.py",
-                        "--source",
-                        "cccl",
-                        "cublas",
-                        "--stats",
-                    ],
-                ),
-                patch("sys.stdout", io.StringIO()),
-                patch("sys.stderr", io.StringIO()),
-            ):
-                main()
-
-    def test_multi_source_limit(self, run_mapper):
-        """--limit applies to merged results across all sources."""
-        import json
-
-        out, _ = run_mapper(["--source", "cccl", "cublas", "--limit", "3"])
+    def test_multi_source_limit(self, run_search):
+        out, _ = run_search(["cccl", "cublas", "--limit", "3"])
         data = json.loads(out)
         assert len(data["candidates"]) <= 3
 
-    def test_multi_source_list_mode(self, run_mapper):
-        """--list mode works with multi-source results."""
-        out, _ = run_mapper(["--source", "cccl", "cublas", "--list"])
+    def test_multi_source_list_mode(self, run_search):
+        out, _ = run_search(["cccl", "cublas", "--format", "tsv"])
         lines = [line for line in out.strip().split("\n") if line]
         assert len(lines) > 0
-        # Each line should be TSV with at least 5 fields
         for line in lines:
             fields = line.split("\t")
             assert len(fields) >= 5
