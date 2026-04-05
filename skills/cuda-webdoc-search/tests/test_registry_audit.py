@@ -1,6 +1,6 @@
 """Tests for registry_audit.py — audit dispatch and validation logic."""
 
-from registry_audit import audit_library, print_table
+from audit import audit_library, print_table
 
 
 # -- audit_library dispatch --------------------------------------------------
@@ -33,7 +33,7 @@ class TestAuditLibrary:
 class TestAuditInputValidation:
     def test_sphinx_no_urls(self):
         """sphinx with no inventory_urls or base_urls should fail."""
-        from registry_audit import audit_sphinx
+        from audit import audit_sphinx
 
         lib = {}
         result = audit_sphinx(lib)
@@ -42,7 +42,7 @@ class TestAuditInputValidation:
 
     def test_doxygen_no_index_url(self):
         """doxygen with no index_url should fail."""
-        from registry_audit import audit_doxygen
+        from audit import audit_doxygen
 
         lib = {}
         result = audit_doxygen(lib)
@@ -51,7 +51,7 @@ class TestAuditInputValidation:
 
     def test_pdf_no_doc_url(self):
         """pdf with no doc_url should fail."""
-        from registry_audit import audit_pdf
+        from audit import audit_pdf
 
         lib = {}
         result = audit_pdf(lib)
@@ -60,7 +60,7 @@ class TestAuditInputValidation:
 
     def test_sphinx_noinv_no_index_url(self):
         """sphinx_noinv with no index_url should fail."""
-        from registry_audit import audit_sphinx_noinv
+        from audit import audit_sphinx_noinv
 
         lib = {}
         result = audit_sphinx_noinv(lib)

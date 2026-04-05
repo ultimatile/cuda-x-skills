@@ -3,7 +3,7 @@
 import pytest
 from bs4 import BeautifulSoup
 
-from structure_extractor import (
+from get import (
     clean_soup,
     extract_section,
     format_output,

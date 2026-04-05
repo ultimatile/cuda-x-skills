@@ -23,7 +23,7 @@ Search and discover APIs across CUDA-X library documentation by querying Sphinx 
 Before searching, check what domains (API types) are available:
 
 ```bash
-uv run topology_mapper.py --source <library> --stats
+uv run cws search <library> --stats
 ```
 
 This returns domain counts: `cpp` (C++ APIs), `c` (C APIs), `py` (Python bindings), `std` (doc labels).
@@ -31,14 +31,14 @@ This returns domain counts: `cpp` (C++ APIs), `c` (C APIs), `py` (Python binding
 ### Search for APIs
 
 ```bash
-uv run topology_mapper.py --source <library> --domains <domain> --keywords <terms> --fuzzy --limit 20
+uv run cws search <library> --domains <domain> --keywords "<terms>" --fuzzy --limit 20
 ```
 
 ### Keyword Syntax (fzf subset)
 
-- Space-separated terms are **AND** (all must match): `--keywords SVD batch`
-- Use `|` for **OR** (requires shell quoting): `--keywords 'SVD | QR'`
-- AND binds tighter than OR: `--keywords 'a b | c'` = (a AND b) OR c
+- Space-separated terms are **AND** (all must match): `--keywords "SVD batch"`
+- Use `|` for **OR** (requires shell quoting): `--keywords "SVD | QR"`
+- AND binds tighter than OR: `--keywords "a b | c"` = (a AND b) OR c
 - **Note**: Only AND/OR via `|` is supported. fzf operators `^`, `'`, `!`, `$` are not available.
 
 ### Available Libraries
@@ -60,20 +60,20 @@ See `registry.toml` for the full list. Common ones:
 2. **Check domains**: Run `--stats` to see available domain types
 3. **Search**: Use `--keywords` with `--fuzzy` for flexible matching
 4. **Filter by domain**: Use `--domains cpp` for C++ APIs, `--domains c` for C APIs
-5. **Extract details**: Use `structure_extractor.py` to get full documentation content
+5. **Extract details**: Use `cws get` to get full documentation content
 
 ## Examples
 
 ### Find tensor decomposition APIs in cuTensorNet
 
 ```bash
-uv run topology_mapper.py --source cuquantum --stats
+uv run cws search cuquantum --stats
 # Shows: cpp:3179, py:1172, std:3378, c:4
 
-uv run topology_mapper.py --source cuquantum --domains cpp --keywords SVD --fuzzy --limit 10
+uv run cws search cuquantum --domains cpp --keywords "SVD" --fuzzy --limit 10
 # Returns: cutensornetTensorSVD, etc. (functions ranked above enumerators)
 
-uv run topology_mapper.py --source cuquantum --domains cpp --keywords 'SVD | QR' --fuzzy
+uv run cws search cuquantum --domains cpp --keywords "SVD | QR" --fuzzy
 # Returns: entries matching SVD OR QR
 ```
 
@@ -81,10 +81,10 @@ uv run topology_mapper.py --source cuquantum --domains cpp --keywords 'SVD | QR'
 
 ```bash
 # "Where is SVD in CUDA-X?" — search cuSOLVER and cuDSS together
-uv run topology_mapper.py --source cusolver cudss --keywords svd --fuzzy --limit 10
+uv run cws search cusolver cudss --keywords "svd" --fuzzy --limit 10
 
 # Mix any number of sources
-uv run topology_mapper.py --source cusolver cusparse cudss --keywords solve --fuzzy
+uv run cws search cusolver cusparse cudss --keywords "solve" --fuzzy
 ```
 
 Multi-source output uses `"sources"` (list) instead of `"source"` (string), and `"total_found"` becomes a per-source dict.
@@ -92,10 +92,10 @@ Multi-source output uses `"sources"` (list) instead of `"source"` (string), and 
 ### Find GEMM functions in cuBLAS
 
 ```bash
-uv run topology_mapper.py --source cublas --stats
+uv run cws search cublas --stats
 # Shows: std:36 (only doc labels, no cpp/c domain)
 
-uv run topology_mapper.py --source cublas --domains std --keywords gemm
+uv run cws search cublas --domains std --keywords "gemm"
 # Returns: cublas-t-gemm, cublas-t-gemmex, etc. (doc section labels)
 ```
 
@@ -104,14 +104,14 @@ uv run topology_mapper.py --source cublas --domains std --keywords gemm
 After finding a function URL, extract its full documentation:
 
 ```bash
-uv run structure_extractor.py --url <url> --section <function_name>
+uv run cws get <url> --section <function_name>
 ```
 
 Example:
 
 ```bash
-uv run structure_extractor.py \
-  --url "https://docs.nvidia.com/cuda/cuquantum/latest/cutensornet/api/functions.html" \
+uv run cws get \
+  "https://docs.nvidia.com/cuda/cuquantum/latest/cutensornet/api/functions.html" \
   --section "cutensornetTensorSVD"
 ```
 
@@ -132,9 +132,16 @@ Parameters { ... }
 }
 ```
 
+### Audit registry health
+
+```bash
+uv run cws audit                    # audit all sources
+uv run cws audit --source cublas    # audit single source
+```
+
 ## Output Format
 
-### topology_mapper.py
+### cws search
 
 JSON output includes:
 
@@ -144,13 +151,13 @@ Single source:
 - `filtered_count`: APIs matching keywords
 - `candidates`: List of matching APIs with `group` (name), `url`, `domain`, `role`
 
-Multi-source (`--source A B`):
+Multi-source (`cws search A B`):
 - `sources`: Library names (list)
 - `total_found`: Per-source totals (dict)
 - `filtered_count`: Total APIs matching keywords across all sources
 - `candidates`: Merged list (k-way merge by score if `--fuzzy`, else concatenated)
 
-### structure_extractor.py
+### cws get
 
 Brace-delimited text tree where:
 - `{` `}` denote hierarchy
@@ -163,6 +170,11 @@ Options:
 
 ## Files
 
-- `topology_mapper.py` - Search APIs across library inventories
-- `structure_extractor.py` - Extract documentation content as text tree
+- `cli.py` - Unified CLI entry point (`cws`)
+- `search.py` - Search APIs across library inventories
+- `audit.py` - Audit registry entries for endpoint health
+- `get.py` - Extract documentation content as text tree
+- `fetchers.py` - Data fetching for Sphinx/Doxygen sources
+- `scoring.py` - Search ranking and filtering logic
+- `registry.py` - Registry loading utility
 - `registry.toml` - Library metadata (URLs, doc types)
