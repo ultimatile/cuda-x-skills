@@ -5,13 +5,13 @@
     "email": "ultimatile@users.noreply.github.com"
   },
   "metadata": {
-    "description": "CUDA-X library documentation and development skills",
-    "version": "0.0.1"
+    "description": "CUDA-X library documentation search and development skills",
+    "version": "2026.4.1"
   },
   "plugins": [
     {
-      "name": "custom-skills",
-      "description": "Your custom Claude skills collection",
+      "name": "cuda-webdoc-search",
+      "description": "Search CUDA-X library documentation (cuBLAS, cuTENSOR, cuSOLVER, etc.) via the `cws` CLI — find API symbols, functions, and types across Sphinx inventories and Doxygen pages",
       "source": "./",
       "strict": false,
       "skills": [
