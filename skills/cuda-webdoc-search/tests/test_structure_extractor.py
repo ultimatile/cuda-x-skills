@@ -222,6 +222,7 @@ class TestListSourcesCli:
         import json
 
         result = _runner.invoke(app, ["list", "--json"])
+        assert result.exit_code == 0
         data = json.loads(result.stdout)
         for entry in data:
             assert "name" in entry
