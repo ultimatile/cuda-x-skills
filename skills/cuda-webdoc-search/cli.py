@@ -71,8 +71,13 @@ def list_sources(
         ]
         print(json_mod.dumps(entries, indent=2))
     else:
+        import shutil
+
+        cols = shutil.get_terminal_size((120, 24)).columns
+        prefix_width = 20 + 14  # name + doc_type columns
+        desc_width = max(cols - prefix_width, 20)
         print(f"{'name':<20} {'doc_type':<14} {'description'}")
-        print("-" * 72)
+        print("-" * min(cols, 120))
         for lib in libraries:
             name = lib.get("name", "")
             doc_type = lib.get("doc_type", "")
@@ -80,8 +85,8 @@ def list_sources(
             tags = lib.get("tags", [])
             if tags:
                 desc += f" [{', '.join(tags)}]"
-            if len(desc) > 40:
-                desc = desc[:37] + "..."
+            if len(desc) > desc_width:
+                desc = desc[: desc_width - 3] + "..."
             print(f"{name:<20} {doc_type:<14} {desc}")
 
 
