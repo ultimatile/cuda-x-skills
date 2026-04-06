@@ -1,8 +1,11 @@
-"""Tests for get.py — HTML parsing and tree conversion."""
+"""Tests for get.py — HTML parsing, tree conversion, and CLI integration."""
 
 import pytest
 from bs4 import BeautifulSoup
+from typer.testing import CliRunner
 
+import registry
+from cli import app
 from get import (
     clean_soup,
     extract_section,
@@ -10,6 +13,8 @@ from get import (
     html_to_brace_tree,
     is_noise,
 )
+
+_runner = CliRunner()
 
 
 def _soup(html):
@@ -170,3 +175,57 @@ class TestCleanSoup:
         html = "<div><p>keep this</p></div>"
         soup = clean_soup(_soup(html))
         assert "keep this" in soup.get_text()
+
+
+# -- cws list CLI integration ------------------------------------------------
+
+_LIST_REGISTRY = {
+    "library": [
+        {
+            "name": "cublas",
+            "doc_type": "sphinx",
+            "description": "GPU-accelerated BLAS",
+            "tags": ["cuBLAS"],
+        },
+        {
+            "name": "cuda_runtime",
+            "doc_type": "doxygen",
+            "description": "CUDA Runtime API",
+        },
+    ]
+}
+
+
+class TestListSourcesCli:
+    @pytest.fixture(autouse=True)
+    def mock_registry(self, monkeypatch):
+        monkeypatch.setattr(registry, "load_registry", lambda _: _LIST_REGISTRY)
+
+    def test_table_output(self):
+        result = _runner.invoke(app, ["list"])
+        assert result.exit_code == 0
+        assert "cublas" in result.stdout
+        assert "cuda_runtime" in result.stdout
+
+    def test_json_output(self):
+        import json
+
+        result = _runner.invoke(app, ["list", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.stdout)
+        assert isinstance(data, list)
+        names = {e["name"] for e in data}
+        assert "cublas" in names
+        assert "cuda_runtime" in names
+
+    def test_json_has_all_fields(self):
+        import json
+
+        result = _runner.invoke(app, ["list", "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.stdout)
+        for entry in data:
+            assert "name" in entry
+            assert "doc_type" in entry
+            assert "description" in entry
+            assert "tags" in entry

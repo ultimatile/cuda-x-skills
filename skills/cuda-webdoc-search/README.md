@@ -37,8 +37,9 @@ uvx --from "cuda-webdoc-search @ git+https://github.com/ultimatile/cuda-x-skills
 | Command | Description |
 |---------|-------------|
 | `cws search` | Search API symbols across CUDA-X library documentation |
-| `cws audit` | Audit registry entries for endpoint health |
 | `cws get` | Extract documentation content as brace-delimited text tree |
+| `cws list` | List available documentation sources from the registry |
+| `cws audit` | Audit registry entries for endpoint health |
 
 Run `cws <command> --help` for full option details.
 
@@ -57,6 +58,9 @@ cws search cusolver cudss --keywords "svd" --fuzzy --limit 10
 # Extract documentation for a specific function
 cws get "https://docs.nvidia.com/cuda/cuquantum/latest/cutensornet/api/functions.html" \
   --section "cutensornetTensorSVD"
+
+# List available sources
+cws list
 
 # Audit all registry entries
 cws audit
