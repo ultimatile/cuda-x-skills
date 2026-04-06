@@ -32,15 +32,6 @@ No installation needed — runs in a temporary environment:
 uvx --from "cuda-webdoc-search @ git+https://github.com/ultimatile/cuda-x-skills.git#subdirectory=skills/cuda-webdoc-search" cws search cublas --stats
 ```
 
-### Development (local clone)
-
-From `skills/cuda-webdoc-search/`:
-
-```bash
-uv run cws search cublas --stats
-uv run pytest tests/
-```
-
 ## Subcommands
 
 | Command | Description |
@@ -79,3 +70,13 @@ Library metadata is defined in `registry.toml`. Each entry specifies:
 - Tags for alias resolution (e.g., `thrust` resolves to `cccl`)
 
 See `registry.toml` for the full list of supported libraries.
+
+## Development
+
+From this directory:
+
+```bash
+uv run cws search cublas --stats   # run locally
+uv run pytest tests/               # tests
+uv run pytest tests/ --cov         # tests with coverage
+```

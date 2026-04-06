@@ -6,7 +6,20 @@ Custom skills for Claude to search CUDA-X library documentation.
 
 When working with CUDA-X libraries (cuBLAS, cuTENSOR, cuTensorNet, cuSOLVER, etc.), coding agents can search their documentation to find relevant APIs, check function signatures, and provide direct links to official docs.
 
-## Installation
+### Install
+
+```bash
+uv tool install "cuda-webdoc-search @ git+https://github.com/ultimatile/cuda-x-skills.git#subdirectory=skills/cuda-webdoc-search"
+```
+
+```bash
+cws search cuquantum --keywords "SVD" --fuzzy --limit 10
+cws audit --source cublas
+```
+
+See [skills/cuda-webdoc-search/README.md](skills/cuda-webdoc-search/README.md) for full usage and development instructions.
+
+## Skills Installation (for Claude Code / Codex)
 
 ```bash
 # For Claude Code (~/.claude/skills/)
@@ -17,15 +30,4 @@ When working with CUDA-X libraries (cuBLAS, cuTENSOR, cuTensorNet, cuSOLVER, etc
 
 # Symlink for development
 ./install-skills.sh --symlink --all
-```
-
-## Development
-
-```bash
-cd skills/cuda-webdoc-search
-make check    # lint + typecheck + test
-make test     # tests only
-make coverage # tests with coverage report
-make lint     # ruff check + format
-make typecheck # pyright
 ```
