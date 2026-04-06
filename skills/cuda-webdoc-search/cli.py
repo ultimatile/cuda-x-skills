@@ -1,10 +1,13 @@
 """CUDA-X Documentation Search Tools — unified CLI entry point."""
 
+import json as json_mod
+import sys
 from importlib.metadata import version
 from typing import Annotated, Optional
 
 import typer
 
+import registry
 from audit import audit
 from get import get_doc
 from search import search
@@ -38,6 +41,48 @@ def main(
 app.command("search")(search)
 app.command("audit")(audit)
 app.command("get")(get_doc)
+
+
+@app.command("list")
+def list_sources(
+    json: Annotated[bool, typer.Option("--json", help="Output as JSON")] = False,
+    registry_path: Annotated[
+        str,
+        typer.Option("--registry", help="Registry TOML path"),
+    ] = registry.DEFAULT_REGISTRY_PATH,
+):
+    """List available documentation sources from the registry."""
+    reg = registry.load_registry(registry_path)
+    if isinstance(reg, str):
+        print(f"Error: {reg}", file=sys.stderr)
+        raise typer.Exit(1)
+
+    libraries = reg.get("library", [])
+
+    if json:
+        entries = [
+            {
+                "name": lib.get("name", ""),
+                "doc_type": lib.get("doc_type", ""),
+                "description": lib.get("description", ""),
+                "tags": lib.get("tags", []),
+            }
+            for lib in libraries
+        ]
+        print(json_mod.dumps(entries, indent=2))
+    else:
+        print(f"{'name':<20} {'doc_type':<14} {'description'}")
+        print("-" * 72)
+        for lib in libraries:
+            name = lib.get("name", "")
+            doc_type = lib.get("doc_type", "")
+            desc = lib.get("description", "")
+            tags = lib.get("tags", [])
+            if tags:
+                desc += f" [{', '.join(tags)}]"
+            if len(desc) > 40:
+                desc = desc[:37] + "..."
+            print(f"{name:<20} {doc_type:<14} {desc}")
 
 
 if __name__ == "__main__":

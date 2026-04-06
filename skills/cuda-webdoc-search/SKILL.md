@@ -144,6 +144,13 @@ Parameters { ... }
 }
 ```
 
+### List available sources
+
+```bash
+cws list                     # table format
+cws list --json              # JSON format
+```
+
 ### Audit registry health
 
 ```bash
