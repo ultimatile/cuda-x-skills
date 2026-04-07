@@ -57,7 +57,7 @@ def list_sources(
         print(f"Error: {reg}", file=sys.stderr)
         raise typer.Exit(1)
 
-    libraries = reg.get("library", [])
+    libraries = sorted(reg.get("library", []), key=lambda lib: lib.get("name", ""))
 
     if json:
         entries = [

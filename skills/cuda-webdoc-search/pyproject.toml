@@ -1,6 +1,6 @@
 [project]
 name = "cuda-webdoc-search"
-version = "0.2.0"
+version = "0.3.0"
 requires-python = ">=3.11"
 dependencies = ["beautifulsoup4", "rapidfuzz", "requests", "sphobjinv", "typer"]
 
