@@ -33,6 +33,15 @@ default_domain = "c"
 cpp_groups = ["HIGHLEVEL"]
 
 [[library]]
+name = "cuda_driver"
+description = "CUDA Driver API"
+doc_type = "doxygen"
+index_url = "https://docs.nvidia.com/cuda/cuda-driver-api/modules.html"
+base_urls = ["https://docs.nvidia.com/cuda/cuda-driver-api/"]
+match_threshold = 60.0
+default_domain = "c"
+
+[[library]]
 name = "cublas"
 description = "GPU-accelerated basic linear algebra (BLAS) library with cuBLAS, cuBLASLt, and cuBLASXt APIs"
 doc_type = "sphinx"
