@@ -22,12 +22,6 @@ See [skills/cuda-webdoc-search/README.md](skills/cuda-webdoc-search/README.md) f
 ## Skills Installation (for Claude Code / Codex)
 
 ```bash
-# For Claude Code (~/.claude/skills/)
-./install-skills.sh --all
-
-# For Codex (~/.codex/skills/)
-./install-skills.sh --codex --all
-
-# Symlink for development
-./install-skills.sh --symlink --all
+claude plugin marketplace add ultimatile/cuda-x-skills
+claude plugin install cuda-x-skills
 ```
