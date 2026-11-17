@@ -216,8 +216,8 @@ repo = "https://github.com/NVIDIA/cutlass"
 name = "nvshmem"
 description = "OpenSHMEM standard for GPU memory"
 doc_type = "sphinx"
-inventory_urls = ["https://docs.nvidia.com/nvshmem/api/objects.inv"]
-base_urls = ["https://docs.nvidia.com/nvshmem/api/"]
+inventory_urls = ["https://docs.nvidia.com/nvshmem/api/latest/objects.inv"]
+base_urls = ["https://docs.nvidia.com/nvshmem/api/latest/"]
 repo = "https://github.com/NVIDIA/nvshmem"
 
 [[library]]
