@@ -2,22 +2,8 @@
 name = "cccl"
 description = "CCCL libcudacxx and Thrust"
 doc_type = "sphinx"
-inventory_urls = [
-  "https://nvidia.github.io/cccl/libcudacxx/objects.inv",
-  "https://nvidia.github.io/cccl/objects.inv",
-  "https://nvidia.github.io/libcudacxx/objects.inv",
-  "https://nvidia.github.io/libcudacxx/latest/objects.inv",
-  "https://nvidia.github.io/cccl/libcudacxx/latest/objects.inv",
-  "https://docs.nvidia.com/cccl/libcudacxx/objects.inv",
-  "https://docs.nvidia.com/cccl/objects.inv",
-]
-base_urls = [
-  "https://nvidia.github.io/cccl/libcudacxx/",
-  "https://nvidia.github.io/cccl/",
-  "https://nvidia.github.io/libcudacxx/",
-  "https://docs.nvidia.com/cccl/libcudacxx/",
-  "https://docs.nvidia.com/cccl/",
-]
+inventory_urls = ["https://nvidia.github.io/cccl/objects.inv"]
+base_urls = ["https://nvidia.github.io/cccl/"]
 match_threshold = 60.0
 tags = ["thrust", "cub", "libcudacxx"]
 repo = "https://github.com/NVIDIA/cccl"
