@@ -830,7 +830,7 @@ class TestListTsvOutput:
             "get_doxygen_members",
             lambda *a, **kw: DOXYGEN_GROUPS,
         )
-        out, _ = run_search(["cuda_runtime", "--keywords", "curand", "--format", "tsv"])
+        out, _ = run_search(["curand", "--keywords", "curand", "--format", "tsv"])
         line = out.strip().splitlines()[0]
         fields = line.split("\t")
         assert len(fields) == 5
